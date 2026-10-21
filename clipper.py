@@ -644,6 +644,8 @@ class App:
     def start(self):
         self.recorder.start(self.settings)
         self.bind_hotkey()
+        if self.settings["autostart"] and not TEST:   # Eintrag erneuern (neu installiert, anderer Ordner)
+            set_autostart(True)
 
     def bind_hotkey(self):
         if TEST:
@@ -762,8 +764,8 @@ def set_autostart(on):
         pyw = Path(sys.executable).with_name("pythonw.exe")
         exe = pyw if pyw.exists() else Path(sys.executable)
         cmd = f'""{exe}"" ""{Path(__file__).resolve()}"" --hidden'
-    startup.write_text('Set sh = CreateObject("WScript.Shell")\r\n'
-                       f'sh.Run "{cmd}", 0, False\r\n', encoding="utf-8")
+    startup.write_text('Set sh = CreateObject("WScript.Shell")\n'   # \n wird unter Windows zu \r\n
+                       f'sh.Run "{cmd}", 0, False\n', encoding="utf-8")
 
 
 WINDOW = None   # eigenes Fenster (pywebview/WebView2), sonst Edge im App-Modus

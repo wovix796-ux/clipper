@@ -1,6 +1,7 @@
-"""Baut Clipper.exe und installiert sie mit Startmenü- und Desktop-Verknüpfung.
+"""Baut Clipper.exe und installiert sie mit StartmenÃ¼- und Desktop-VerknÃ¼pfung.
 
 Aufruf: python build.py   (oder "App bauen.bat" doppelklicken)
+        python build.py --setup   baut zusÃ¤tzlich Clipper-Setup.exe zum Weitergeben (Inno Setup)
 Ziel:   %LOCALAPPDATA%\\Programs\\Clipper\\Clipper.exe
 """
 import os
@@ -14,9 +15,9 @@ HERE = Path(__file__).resolve().parent
 BUILD = Path(os.environ.get("TEMP", HERE)) / "clipper_build"
 TARGET = Path(os.environ["LOCALAPPDATA"]) / "Programs" / "Clipper"
 EXE = TARGET / "Clipper.exe"
-APP_VERSION = (1, 2, 0, 0)
+APP_VERSION = (1, 2, 1, 0)
 
-# Versionsinfo der exe: Windows zeigt FileDescription z. B. im Taskleisten-Menü als Programmnamen
+# Versionsinfo der exe: Windows zeigt FileDescription z. B. im Taskleisten-MenÃ¼ als Programmnamen
 VERSION_INFO = f"""VSVersionInfo(
   ffi=FixedFileInfo(filevers={APP_VERSION}, prodvers={APP_VERSION}),
   kids=[StringFileInfo([StringTable('040704b0', [
@@ -67,7 +68,7 @@ def main():
 
     # laufendes Clipper beenden, sonst sind die Dateien gesperrt
     subprocess.run(["taskkill", "/f", "/im", "Clipper.exe"], capture_output=True)
-    # Nur den Inhalt löschen: Den Ordner selbst kann ein offenes Fenster als Arbeitsordner sperren.
+    # Nur den Inhalt lÃ¶schen: Den Ordner selbst kann ein offenes Fenster als Arbeitsordner sperren.
     TARGET.mkdir(parents=True, exist_ok=True)
     for _ in range(60):   # Windows (und der Virenscanner) geben die Dateien erst kurz danach frei
         try:
@@ -91,10 +92,26 @@ def main():
     # Autostart auf die exe umstellen, falls er schon an war
     vbs = Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs/Startup/Clipper.vbs"
     if vbs.exists():
-        vbs.write_text('Set sh = CreateObject("WScript.Shell")\r\n'
-                       f'sh.Run """{EXE}"" --hidden", 0, False\r\n', encoding="utf-8")
+        vbs.write_text('Set sh = CreateObject("WScript.Shell")\n'
+                       f'sh.Run """{EXE}"" --hidden", 0, False\n', encoding="utf-8")
 
-    print(f"\nFertig: {EXE}\nVerknüpfungen auf dem Desktop und im Startmenü angelegt.")
+    print(f"\nFertig: {EXE}\nVerknÃ¼pfungen auf dem Desktop und im StartmenÃ¼ angelegt.")
+    if "--setup" in sys.argv:
+        build_setup(icon)
+
+
+def build_setup(icon):
+    """Baut Clipper-Setup.exe mit Inno Setup (winget install JRSoftware.InnoSetup)."""
+    iscc = next((p for p in [Path(os.environ["LOCALAPPDATA"]) / "Programs/Inno Setup 6/ISCC.exe",
+                             Path(os.environ.get("ProgramFiles(x86)", "")) / "Inno Setup 6/ISCC.exe",
+                             Path(os.environ.get("ProgramFiles", "")) / "Inno Setup 6/ISCC.exe"]
+                 if p.exists()), None)
+    if not iscc:
+        sys.exit("Inno Setup fehlt: winget install JRSoftware.InnoSetup")
+    sh(iscc, "/Q", f"/DAppVersion={'.'.join(map(str, APP_VERSION[:3]))}",
+       f"/DSourceDir={BUILD / 'dist' / 'Clipper'}", f"/DIconFile={icon}", f"/DOutDir={BUILD}",
+       HERE / "clipper.iss")
+    print(f"Setup: {BUILD / 'Clipper-Setup.exe'}")
 
 
 if __name__ == "__main__":

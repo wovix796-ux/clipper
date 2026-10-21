@@ -22,16 +22,20 @@ Wie die Clip-Funktion von Discord Nitro oder NVIDIA ShadowPlay, nur kostenlos, o
 
 ## Installation
 
-1. **ffmpeg installieren**, das braucht Clipper für die Aufnahme. Eingabeaufforderung oder PowerShell öffnen und eingeben:
-   ```
-   winget install Gyan.FFmpeg
-   ```
-2. **Clipper herunterladen:** unter [Releases](../../releases/latest) die Datei `Clipper-windows.zip` laden.
-3. Entpacken, zum Beispiel nach `C:\Programme\Clipper` oder in deinen Benutzerordner, und **`Clipper.exe`** starten.
+<p><a href="../../releases/latest/download/Clipper-Setup.exe"><b>⬇ Clipper-Setup.exe herunterladen</b></a> (ca. 25 MB)</p>
+
+1. `Clipper-Setup.exe` herunterladen und doppelklicken.
+2. „Installieren“ klicken. Adminrechte brauchst du nicht. Fehlt ffmpeg (wird für die Aufnahme gebraucht), installiert das Setup es gleich mit.
+3. Fertig: Clipper liegt im Startmenü und auf Wunsch auf dem Desktop. Deinstallieren geht über Windows-Einstellungen → Apps. Deine Clips bleiben dabei erhalten.
+
+<details><summary>Ohne Installation (portable Zip)</summary>
+
+Unter [Releases](../../releases/latest) die Datei `Clipper-windows.zip` laden, entpacken und `Clipper.exe` starten. ffmpeg musst du dann selbst installieren: `winget install Gyan.FFmpeg`.
+</details>
 
 Unten rechts im Tray erscheint das Clipper-Logo. Das Fenster kannst du schließen, die Aufnahme läuft weiter. Mit einem Doppelklick aufs Tray-Icon öffnet es sich wieder.
 
-> Windows SmartScreen warnt eventuell beim ersten Start, weil die App nicht signiert ist. Dann auf „Weitere Informationen“ und „Trotzdem ausführen“ klicken.
+> Windows SmartScreen warnt eventuell beim Setup, weil es nicht signiert ist. Dann auf „Weitere Informationen“ und „Trotzdem ausführen“ klicken.
 
 ## Bedienung
 
@@ -63,6 +67,7 @@ Dafür brauchst du Python 3.10 oder neuer und ffmpeg.
 pip install -r requirements.txt
 python clipper.py          # direkt starten
 python build.py            # Clipper.exe bauen und installieren (Desktop + Startmenü)
+python build.py --setup    # zusätzlich Clipper-Setup.exe bauen (braucht Inno Setup: winget install JRSoftware.InnoSetup)
 python clipper.py --test   # Testbild und Testton, läuft auch ohne Windows
 ```
 
