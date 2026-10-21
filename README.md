@@ -2,10 +2,16 @@
 
 <h1 align="center">Clipper</h1>
 
-<p align="center"><b>Drück Alt+R und Clipper speichert die letzten 30 Sekunden vom Bildschirm, mit PC-Ton und Mikrofon.</b><br>
-Wie die Clip-Funktion von Discord Nitro oder NVIDIA ShadowPlay, nur kostenlos, ohne Konto und ohne Cloud.</p>
+<h3 align="center">Du willst unbedingt das Clipping-Tool aus Discord?<br>Hier bekommst du es kostenlos.</h3>
 
-<p align="center"><i>English: a free, local replay buffer for Windows. Press Alt+R to save the last 30 seconds of your screen with desktop audio and microphone, then trim and share clips in a small built-in editor.</i></p>
+<p align="center">Drück <b>Alt+R</b>, und die letzten 30 Sekunden sind gespeichert, mit Spiel-Ton, deinen Freunden aus dem Call und deinem Mikrofon.<br>
+Ohne Nitro, ohne Konto, ohne Cloud.</p>
+
+<p align="center"><a href="../../releases/latest/download/Clipper-Setup.exe"><b>⬇ Kostenlos herunterladen</b></a></p>
+
+<p align="center"><i>English: Want Discord's clipping tool? Get it here for free. Press Alt+R to save the last 30 seconds with game audio, your friends on the call and your mic. No Nitro, no account, no cloud.</i></p>
+
+<p align="center"><sub>Clipper ist ein unabhängiges Projekt und hat nichts mit Discord zu tun. / Not affiliated with Discord.</sub></p>
 
 ---
 
