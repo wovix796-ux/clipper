@@ -65,7 +65,7 @@ python build.py            # Clipper.exe bauen und installieren (Desktop + Start
 python clipper.py --test   # Testbild und Testton, läuft auch ohne Windows
 ```
 
-**So funktioniert es:** ffmpeg nimmt per `ddagrab` (Desktop Duplication API) auf und schreibt 1-Sekunden-Stücke in einen Ringpuffer. Ein Clip hängt die letzten Stücke ohne neu Encodieren aneinander. Den Ton liefert WASAPI-Loopback, das Mikrofon kommt über das Paket `soundcard` dazu. Beides wird in Python im Takt der Uhr gemischt, damit es synchron zum Bild bleibt. Die Oberfläche ist eine HTML-Seite, ausgeliefert von einem kleinen lokalen Server auf `127.0.0.1` und angezeigt in Edge im App-Modus.
+**So funktioniert es:** ffmpeg nimmt per `ddagrab` (Desktop Duplication API) auf und schreibt 1-Sekunden-Stücke in einen Ringpuffer. Ein Clip hängt die letzten Stücke ohne neu Encodieren aneinander. Den Ton liefert WASAPI-Loopback, das Mikrofon kommt über das Paket `soundcard` dazu. Beides wird in Python im Takt der Uhr gemischt, damit es synchron zum Bild bleibt. Die Oberfläche ist eine HTML-Seite, ausgeliefert von einem kleinen lokalen Server auf `127.0.0.1` und angezeigt in einem eigenen Fenster (pywebview mit WebView2).
 
 ## Lizenz
 

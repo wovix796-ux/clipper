@@ -690,6 +690,8 @@ class App:
             self.bind_hotkey()
         if s["autostart"] != old["autostart"]:
             set_autostart(s["autostart"])
+        if s["theme"] != old["theme"]:
+            style_titlebar(s["theme"])
         return s
 
     def status(self):
@@ -733,9 +735,77 @@ def set_autostart(on):
                        f'sh.Run "{cmd}", 0, False\r\n', encoding="utf-8")
 
 
+WINDOW = None   # eigenes Fenster (pywebview/WebView2), sonst Edge im App-Modus
+WINDOW_HWND = 0
+
+
+def windows_dark():
+    """True, wenn Windows für Apps den dunklen Modus nutzt."""
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                             r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        return winreg.QueryValueEx(key, "AppsUseLightTheme")[0] == 0
+    except OSError:
+        return False
+
+
+def style_titlebar(theme):
+    """Titelleiste des Fensters hell oder dunkel, passend zum Erscheinungsbild der App."""
+    if WINDOW is None or not IS_WIN:
+        return
+    try:
+        import ctypes
+        dark = theme == "dark" or (theme == "auto" and windows_dark())
+        hwnd = WINDOW_HWND or WINDOW.native.Handle.ToInt64()
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(   # 20 = DWMWA_USE_IMMERSIVE_DARK_MODE
+            ctypes.c_void_p(hwnd), 20, ctypes.byref(ctypes.c_int(int(dark))), 4)
+    except Exception:
+        log.exception("Titelleiste konnte nicht angepasst werden")
+
+
+def run_window(app, hidden):
+    """Zeigt die Oberfläche im eigenen Fenster. In der Taskleiste steht dann „Clipper“ statt Edge."""
+    global WINDOW
+    try:
+        import webview
+    except ImportError:
+        log.warning("pywebview fehlt, nutze Edge")
+        if not hidden:
+            open_window()
+        return run_tray(app)
+    threading.Thread(target=run_tray, args=(app,), daemon=True).start()
+    theme = app.settings.get("theme", "auto")
+    dark = theme == "dark" or (theme == "auto" and windows_dark())
+    WINDOW = webview.create_window("Clipper", f"http://127.0.0.1:{PORT}/", width=1280, height=820,
+                                   min_size=(820, 560), hidden=hidden,
+                                   background_color="#000000" if dark else "#f5f5f7")
+
+    def on_closing():   # X schließt nur das Fenster, die Aufnahme läuft im Tray weiter
+        WINDOW.hide()
+        return False
+
+    WINDOW.events.closing += on_closing
+    def on_shown():
+        global WINDOW_HWND
+        try:
+            WINDOW_HWND = WINDOW.native.Handle.ToInt64()
+        except Exception:
+            pass
+        style_titlebar(app.settings.get("theme", "auto"))
+
+    WINDOW.events.shown += on_shown
+    webview.start(private_mode=False, storage_path=str(DATA_DIR / "webview"))
+    app.quit()
+
+
 def open_window():
+    if WINDOW is not None:
+        WINDOW.show()
+        WINDOW.restore()
+        return
     url = f"http://127.0.0.1:{PORT}/"
-    if IS_WIN:   # Edge im App-Modus = eigenes Fenster ohne Adressleiste
+    if IS_WIN:   # Notlösung: Edge im App-Modus = eigenes Fenster ohne Adressleiste
         for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
             edge = Path(base or "") / "Microsoft/Edge/Application/msedge.exe"
             if base and edge.exists():
@@ -749,6 +819,18 @@ def open_window():
 # --- HTTP --------------------------------------------------------------------
 
 APP = None
+
+
+class Server(ThreadingHTTPServer):
+    """Belegt den Port exklusiv. Mit SO_REUSEADDR (Python-Standard) dürfte unter Windows ein
+    zweites Clipper denselben Port öffnen und liefe dann doppelt."""
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if IS_WIN:
+            import socket
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -847,6 +929,9 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/delete":
                 lib.delete(body["name"])
                 return self.send_json({"ok": True})
+            if route == "/api/show":   # zweiter Start von Clipper.exe
+                open_window()
+                return self.send_json({"ok": True})
             if route == "/api/copy":
                 out = lib.copy(body["name"], bool(body.get("small")))
                 return self.send_json({"file": out.name, "size": out.stat().st_size})
@@ -904,9 +989,15 @@ def main():
         sys.exit(1)
 
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    except OSError:   # läuft schon -> nur das Fenster öffnen
-        open_window()
+        server = Server(("127.0.0.1", PORT), Handler)
+    except OSError:   # läuft schon -> das laufende Clipper soll sein Fenster zeigen
+        try:
+            import urllib.request
+            urllib.request.urlopen(urllib.request.Request(
+                f"http://127.0.0.1:{PORT}/api/show", data=b"{}", method="POST",
+                headers={"X-Clipper": "1", "Content-Type": "application/json"}), timeout=3)
+        except OSError:
+            open_window()
         return
 
     log.info("Clipper startet (Test=%s)", TEST)
@@ -914,8 +1005,6 @@ def main():
     APP = App(ffmpeg, ffprobe)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     APP.start()
-    if not args.hidden and not TEST:
-        open_window()
     if TEST:
         print(f"Testmodus läuft auf http://127.0.0.1:{PORT}/ — Strg+C beendet.")
         try:
@@ -924,7 +1013,7 @@ def main():
         except KeyboardInterrupt:
             APP.quit()
     else:
-        run_tray(APP)
+        run_window(APP, args.hidden)
 
 
 if __name__ == "__main__":

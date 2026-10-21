@@ -4,3 +4,4 @@ numpy
 pystray
 pillow
 send2trash
+pywebview

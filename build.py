@@ -14,6 +14,22 @@ HERE = Path(__file__).resolve().parent
 BUILD = Path(os.environ.get("TEMP", HERE)) / "clipper_build"
 TARGET = Path(os.environ["LOCALAPPDATA"]) / "Programs" / "Clipper"
 EXE = TARGET / "Clipper.exe"
+APP_VERSION = (1, 1, 0, 0)
+
+# Versionsinfo der exe: Windows zeigt FileDescription z. B. im Taskleisten-Menü als Programmnamen
+VERSION_INFO = f"""VSVersionInfo(
+  ffi=FixedFileInfo(filevers={APP_VERSION}, prodvers={APP_VERSION}),
+  kids=[StringFileInfo([StringTable('040704b0', [
+    StringStruct('CompanyName', 'wovix796-ux'),
+    StringStruct('FileDescription', 'Clipper'),
+    StringStruct('FileVersion', '{".".join(map(str, APP_VERSION[:3]))}'),
+    StringStruct('InternalName', 'Clipper'),
+    StringStruct('OriginalFilename', 'Clipper.exe'),
+    StringStruct('ProductName', 'Clipper'),
+    StringStruct('ProductVersion', '{".".join(map(str, APP_VERSION[:3]))}')])]),
+    VarFileInfo([VarStruct('Translation', [0x0407, 1200])])]
+)
+"""
 
 
 def sh(*cmd):
@@ -40,8 +56,10 @@ def main():
     BUILD.mkdir(exist_ok=True)
     icon = BUILD / "clipper.ico"
     make_icon(icon)
+    version = BUILD / "version.txt"
+    version.write_text(VERSION_INFO, encoding="utf-8")
     sh(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed",
-       "--name", "Clipper", "--icon", icon,
+       "--name", "Clipper", "--icon", icon, "--version-file", version,
        "--add-data", f"{HERE / 'ui.html'};.",
        "--collect-all", "soundcard", "--hidden-import", "pystray._win32",
        "--distpath", BUILD / "dist", "--workpath", BUILD / "work", "--specpath", BUILD,
