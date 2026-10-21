@@ -18,6 +18,7 @@ Wie die Clip-Funktion von Discord Nitro oder NVIDIA ShadowPlay, nur kostenlos, o
 - **Teilen:** Ein Klick auf „Kopieren“, dann mit Strg+V in Discord, WhatsApp oder den Explorer einfügen. „Für Discord“ verkleinert den Clip vorher auf unter 10 MB.
 - **Schnell und sparsam:** nutzt die Grafikkarte zum Encodieren (NVIDIA NVENC, AMD AMF, Intel Quick Sync, sonst CPU).
 - **Apple-Look** mit hellem und dunklem Modus. Clipper sitzt im Tray und kann mit Windows starten.
+- **Deutsch und Englisch:** Die Sprache richtet sich automatisch nach Windows und lässt sich in den Einstellungen festlegen. *(English: the language follows Windows automatically.)*
 
 ## Installation
 

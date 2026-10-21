@@ -16,6 +16,10 @@
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   }
   applyTheme(themePref);
+  // Sprache: zuletzt vom Programm gemeldete, sonst die des Systems
+  let langPref = '';
+  try { langPref = localStorage.getItem('lang') || ''; } catch (e) {}
+  document.documentElement.lang = langPref || (navigator.language.toLowerCase().startsWith('de') ? 'de' : 'en');
   darkMq.addEventListener('change', () => applyTheme(themePref));
 </script>
 <style>
@@ -379,6 +383,8 @@
           <label><input type="radio" name="theme" value="light"><span>Hell</span></label>
           <label><input type="radio" name="theme" value="dark"><span>Dunkel</span></label>
         </div></div>
+      <div class="row"><label>Sprache</label>
+        <select name="language"><option value="auto">Automatisch</option><option value="de">Deutsch</option><option value="en">English</option></select></div>
     </div>
     <div class="group">
       <div class="row"><label>Tastenkürzel</label><button type="button" id="hotkeyBtn">Alt+R</button></div>
@@ -428,6 +434,80 @@
 
 <script>
 const $ = id => document.getElementById(id);
+// --- Sprache: Deutsch ist der Ausgangstext, EN die Übersetzung. tr() übersetzt Texte im Skript,
+// translatePage() die festen Texte und Tooltips im HTML. ---
+const EN = {
+  'Verbinde …': 'Connecting …', 'Clip-Ordner öffnen': 'Open clip folder', 'Einstellungen': 'Settings',
+  'Clip aufnehmen': 'Record clip', 'Noch keine Clips': 'No clips yet', 'Drück': 'Press',
+  'und Clipper speichert die letzten': 'and Clipper saves the last', 'Sekunden.': 'seconds.',
+  'Zum Umbenennen klicken, Enter speichert': 'Click to rename, Enter saves',
+  'Clip in die Zwischenablage, dann mit Strg+V einfügen': 'Copy the clip to the clipboard, then paste with Ctrl+V',
+  'In die Zwischenablage, dann mit Strg+V einfügen': 'Copy to the clipboard, then paste with Ctrl+V',
+  'Kopieren': 'Copy', 'Für Discord': 'For Discord', 'Verkleinert auf unter 10 MB und kopiert': 'Shrinks to under 10 MB and copies',
+  'Im Ordner zeigen': 'Show in folder', 'Löschen': 'Delete',
+  'Am Abspielkopf teilen (S)': 'Split at playhead (S)', 'Markierten Teil entfernen (Entf)': 'Remove selected part (Del)',
+  'Rückgängig (Strg+Z)': 'Undo (Ctrl+Z)', 'Zum Anfang (Pos1)': 'Go to start (Home)',
+  '5 Sekunden zurück (J)': 'Back 5 seconds (J)', 'Abspielen/Pause (Leertaste)': 'Play/Pause (Space)',
+  '5 Sekunden vor (L)': 'Forward 5 seconds (L)', 'Verkleinern (Strg+Mausrad)': 'Zoom out (Ctrl+scroll)',
+  'Vergrößern (Strg+Mausrad)': 'Zoom in (Ctrl+scroll)', 'Ganze Zeitleiste zeigen': 'Fit timeline',
+  'Die übrigen Teile als neuen Clip sichern, das Original bleibt': 'Save the remaining parts as a new clip, the original stays',
+  'Als neuen Clip sichern': 'Save as new clip', 'teilen': 'split', 'Entf': 'Del', 'Teil entfernen': 'remove part',
+  'Leertaste': 'Space', 'Bild für Bild': 'frame by frame', 'Strg': 'Ctrl', 'rückgängig': 'undo',
+  'Ränder des markierten Teils ziehen zum Kürzen': 'Drag the edges of the selected part to trim',
+  'Erscheinungsbild': 'Appearance', 'Automatisch': 'Automatic', 'Hell': 'Light', 'Dunkel': 'Dark', 'Sprache': 'Language',
+  'Tastenkürzel': 'Shortcut', 'Clip-Länge': 'Clip length', '15 Sekunden': '15 seconds', '30 Sekunden': '30 seconds',
+  '1 Minute': '1 minute', '2 Minuten': '2 minutes', '5 Minuten': '5 minutes', 'Bildrate': 'Frame rate',
+  'Qualität': 'Quality', 'Hoch': 'High', 'Mittel': 'Medium', 'Niedrig': 'Low',
+  'PC-Ton aufnehmen': 'Record PC audio', 'Mikrofon aufnehmen': 'Record microphone', 'Mikrofon-Lautstärke': 'Microphone volume',
+  'Ton beim Speichern': 'Sound when saving', 'Mit Windows starten': 'Start with Windows', 'Clip-Ordner': 'Clip folder',
+  'Clipper beenden': 'Quit Clipper', 'Abbrechen': 'Cancel', 'Sichern': 'Save', 'Arbeite …': 'Working …',
+  'Heute, ': 'Today, ', 'Gestern, ': 'Yesterday, ',
+  'Verkleinere für Discord …': 'Shrinking for Discord …', 'Kopiere …': 'Copying …',
+  'Kopiert ({size}) · Strg+V zum Einfügen': 'Copied ({size}) · paste with Ctrl+V', 'Kopiert · Strg+V zum Einfügen': 'Copied · paste with Ctrl+V',
+  'Aufnahme: ': 'Recording: ', 'Ton: ': 'Audio: ', 'Tastenkürzel: ': 'Shortcut: ',
+  'Nimmt auf · {key} sichert {sec} s': 'Recording · {key} saves {sec} s',
+  ' · PC + Mikro': ' · PC + mic', ' · nur PC-Ton': ' · PC audio only', ' · nur Mikro': ' · mic only', ' · ohne Ton': ' · no audio',
+  'Aufnahme startet …': 'Starting recording …', 'Clip gesichert: ': 'Clip saved: ', 'Clipper läuft nicht': 'Clipper is not running',
+  'Hier lässt sich nicht teilen': "Can't split here", 'Schneide Clip …': 'Cutting clip …', 'Neuer Clip gesichert': 'New clip saved',
+  '„{name}“ löschen?': 'Delete “{name}”?', 'Der Clip wird in den Papierkorb verschoben.': 'The clip will be moved to the Recycle Bin.',
+  'Lösche …': 'Deleting …', 'Clip gelöscht': 'Clip deleted', 'Umbenannt': 'Renamed', 'Sichere Clip …': 'Saving clip …',
+  'Tasten drücken …': 'Press keys …', 'Bitte mit Strg, Alt oder Umschalt kombinieren': 'Please combine with Ctrl, Alt or Shift',
+  'Sichere …': 'Saving …', 'Gesichert': 'Saved', 'Clipper beenden?': 'Quit Clipper?',
+  'Danach werden keine Clips mehr aufgenommen.': 'No more clips will be recorded after that.', 'Beenden': 'Quit',
+};
+let lang = document.documentElement.lang === 'de' ? 'de' : 'en';
+function tr(text, vars) {
+  let out = lang === 'en' && EN[text] !== undefined ? EN[text] : text;
+  for (const k in vars || {}) out = out.replace('{' + k + '}', vars[k]);
+  return out;
+}
+const shown = new WeakMap();   // Knoten -> {de: Ausgangstext, out: zuletzt gesetzter Text}
+function trNode(node, get, set) {
+  const cur = get(), prev = shown.get(node);
+  const de = prev && cur === prev.out ? prev.de : cur;   // geänderter Text = neuer Ausgangstext
+  const core = de.trim();
+  if (!core || !(core in EN)) return;
+  const out = de.replace(core, tr(core));
+  if (out !== cur) set(out);
+  shown.set(node, {de, out});
+}
+function translatePage() {
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (n.parentElement.closest('script, style, #grid, #lane, #ruler, #clock')) continue;
+    trNode(n, () => n.data, v => n.data = v);
+  }
+  for (const el of document.querySelectorAll('[title]')) trNode(el, () => el.title, v => el.title = v);
+}
+function setLang(next) {
+  if (next === lang) return;
+  lang = next;
+  document.documentElement.lang = lang;
+  try { localStorage.setItem('lang', lang); } catch (e) {}
+  translatePage();
+  if (clips.length) loadClips();
+}
+
 let clips = [], status = null, libSig = null, lastClipTime = null, current = null;
 let newName = null;
 
@@ -446,7 +526,7 @@ function toast(msg, err = false) {
   t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
   clearTimeout(t._h); t._h = setTimeout(() => t.className = t.className.replace('show', ''), 3200);
 }
-function busy(on, text = 'Arbeite …') { $('busyText').textContent = text; $('busy').classList.toggle('show', on); }
+function busy(on, text = tr('Arbeite …')) { $('busyText').textContent = text; $('busy').classList.toggle('show', on); }
 async function guarded(fn, text) {
   busy(true, text);
   try { return await fn(); } catch (e) { toast(e.message, true); } finally { busy(false); }
@@ -466,11 +546,12 @@ const fmtSize = b => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : (b / 1e6).toFixed(
 const keyLabel = k => k.split('+').map(p => p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1)).join('+');
 function fmtDate(t) {
   const d = new Date(t * 1000), now = new Date();
-  const time = d.toLocaleTimeString('de-AT', {hour: '2-digit', minute: '2-digit'});
-  if (d.toDateString() === now.toDateString()) return 'Heute, ' + time;
+  const loc = lang === 'de' ? 'de-AT' : navigator.language;
+  const time = d.toLocaleTimeString(loc, {hour: '2-digit', minute: '2-digit'});
+  if (d.toDateString() === now.toDateString()) return tr('Heute, ') + time;
   const y = new Date(now); y.setDate(now.getDate() - 1);
-  if (d.toDateString() === y.toDateString()) return 'Gestern, ' + time;
-  return d.toLocaleDateString('de-AT', {day: '2-digit', month: '2-digit', year: 'numeric'}) + ', ' + time;
+  if (d.toDateString() === y.toDateString()) return tr('Gestern, ') + time;
+  return d.toLocaleDateString(loc, {day: '2-digit', month: '2-digit', year: 'numeric'}) + ', ' + time;
 }
 const enc = n => encodeURIComponent(n);
 
@@ -487,7 +568,7 @@ async function loadClips(highlight) {
     el.tabIndex = 0;
     el.innerHTML = `<div class="thumb"><img loading="lazy" alt=""><div class="scrub"></div>
       <span class="dur"></span><div class="scrubbar"><i></i></div>
-      <button class="copy" title="In die Zwischenablage, dann mit Strg+V einfügen">Kopieren</button></div>
+      <button class="copy" title="${tr('In die Zwischenablage, dann mit Strg+V einfügen')}">${tr('Kopieren')}</button></div>
       <div class="meta"><div class="name"></div><div class="sub"></div></div>`;
     el.querySelector('img').src = `/thumb/${enc(c.name)}?v=${c.mtime}`;
     el.querySelector('.copy').onclick = e => { e.stopPropagation(); copyClip(c.name, false); };
@@ -541,9 +622,9 @@ function attachScrub(thumb, c) {
 
 // --- Kopieren ---
 async function copyClip(name, small) {
-  const res = await guarded(() => api('/api/copy', {name, small}), small ? 'Verkleinere für Discord …' : 'Kopiere …');
+  const res = await guarded(() => api('/api/copy', {name, small}), tr(small ? 'Verkleinere für Discord …' : 'Kopiere …'));
   if (!res) return;
-  toast(small ? `Kopiert (${fmtSize(res.size)}) · Strg+V zum Einfügen` : 'Kopiert · Strg+V zum Einfügen');
+  toast(small ? tr('Kopiert ({size}) · Strg+V zum Einfügen', {size: fmtSize(res.size)}) : tr('Kopiert · Strg+V zum Einfügen'));
 }
 
 // --- Status ---
@@ -552,15 +633,16 @@ async function poll() {
     status = await api('/api/status');
     const s = status.settings;
     const pill = $('pill');
-    const problems = [status.error && 'Aufnahme: ' + status.error, status.audio_error && 'Ton: ' + status.audio_error,
-                      status.hotkey_error && 'Tastenkürzel: ' + status.hotkey_error].filter(Boolean);
+    if (status.lang) setLang(status.lang);
+    const problems = [status.error && tr('Aufnahme: ') + status.error, status.audio_error && tr('Ton: ') + status.audio_error,
+                      status.hotkey_error && tr('Tastenkürzel: ') + status.hotkey_error].filter(Boolean);
     if (status.recording) {
       pill.className = 'pill rec';
-      $('pillText').textContent = `Nimmt auf · ${keyLabel(s.hotkey)} sichert ${s.clip_seconds} s` +
-        (s.audio && s.mic ? ' · PC + Mikro' : s.audio ? ' · nur PC-Ton' : s.mic ? ' · nur Mikro' : ' · ohne Ton');
+      $('pillText').textContent = tr('Nimmt auf · {key} sichert {sec} s', {key: keyLabel(s.hotkey), sec: s.clip_seconds}) +
+        tr(s.audio && s.mic ? ' · PC + Mikro' : s.audio ? ' · nur PC-Ton' : s.mic ? ' · nur Mikro' : ' · ohne Ton');
     } else {
       pill.className = 'pill err';
-      $('pillText').textContent = 'Aufnahme startet …';
+      $('pillText').textContent = tr('Aufnahme startet …');
     }
     $('alert').style.display = problems.length ? 'flex' : 'none';
     $('alert').textContent = problems.join(' — ');
@@ -573,12 +655,12 @@ async function poll() {
       const lc = status.last_clip;
       const fresh = lc && lc.time !== lastClipTime && !first;
       await loadClips(fresh ? lc.name : null);
-      if (fresh) toast('Clip gesichert: ' + lc.name.replace(/\.mp4$/, ''));
+      if (fresh) toast(tr('Clip gesichert: ') + lc.name.replace(/\.mp4$/, ''));
     }
     if (status.last_clip) lastClipTime = status.last_clip.time;
   } catch (e) {
     $('pill').className = 'pill err';
-    $('pillText').textContent = 'Clipper läuft nicht';
+    $('pillText').textContent = tr('Clipper läuft nicht');
   }
 }
 
@@ -825,7 +907,7 @@ $('tlContent').addEventListener('pointerup', () => {
 function split() {
   const t = video.currentTime;
   const i = segs.findIndex(s => t > s.a + 0.05 && t < s.b - 0.05);
-  if (i < 0) return toast('Hier lässt sich nicht teilen', true);
+  if (i < 0) return toast(tr('Hier lässt sich nicht teilen'), true);
   pushUndo();
   segs.splice(i, 1, {a: segs[i].a, b: t}, {a: t, b: segs[i].b});
   selSeg = i + 1;
@@ -872,19 +954,19 @@ $('backBtn').onclick = closeEditor;
 async function saveEdit() {
   const name = current;
   video.pause();
-  const res = await guarded(() => api('/api/trim', {name, segments: segs.map(s => [s.a, s.b])}), 'Schneide Clip …');
+  const res = await guarded(() => api('/api/trim', {name, segments: segs.map(s => [s.a, s.b])}), tr('Schneide Clip …'));
   if (!res) return;
-  toast('Neuer Clip gesichert');
+  toast(tr('Neuer Clip gesichert'));
   libSig = null; await poll();
   openEditor(res.name);
 }
 $('saveNewBtn').onclick = saveEdit;
 
 $('deleteBtn').onclick = async () => {
-  if (!await ask(`„${current.replace(/\.mp4$/, '')}“ löschen?`, 'Der Clip wird in den Papierkorb verschoben.', 'Löschen')) return;
+  if (!await ask(tr('„{name}“ löschen?', {name: current.replace(/\.mp4$/, '')}), tr('Der Clip wird in den Papierkorb verschoben.'), tr('Löschen'))) return;
   const name = current;
   closeEditor();
-  if (await guarded(() => api('/api/delete', {name}), 'Lösche …')) { toast('Clip gelöscht'); libSig = null; poll(); }
+  if (await guarded(() => api('/api/delete', {name}), tr('Lösche …'))) { toast(tr('Clip gelöscht')); libSig = null; poll(); }
 };
 $('copyBtn').onclick = () => copyClip(current, false);
 $('copySmallBtn').onclick = () => copyClip(current, true);
@@ -897,7 +979,7 @@ async function rename() {
   releaseVideo();
   try {
     const res = await api('/api/rename', {name, new: val});
-    toast('Umbenannt');
+    toast(tr('Umbenannt'));
     current = res.name;
     video.src = `/media/${enc(res.name)}?v=${Date.now()}`;
     video.addEventListener('loadedmetadata', () => video.currentTime = t, {once: true});
@@ -912,7 +994,7 @@ $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') e.targe
 $('nameInput').addEventListener('blur', rename);
 
 // --- Werkzeugleiste ---
-$('clipBtn').onclick = () => guarded(async () => { await api('/api/clip', {}); await poll(); }, 'Sichere Clip …');
+$('clipBtn').onclick = () => guarded(async () => { await api('/api/clip', {}); await poll(); }, tr('Sichere Clip …'));
 $('folderBtn').onclick = () => api('/api/reveal', {}).catch(e => toast(e.message, true));
 
 // --- Einstellungen ---
@@ -923,18 +1005,19 @@ $('settingsBtn').onclick = () => {
   form.audio.checked = s.audio; form.autostart.checked = s.autostart; form.sound.checked = s.sound !== false; form.clip_dir.value = s.clip_dir;
   form.mic.checked = s.mic; form.mic_volume.value = s.mic_volume;
   form.theme.value = s.theme || 'auto';
+  form.language.value = s.language || 'auto';
   const dev = status.audio_devices || {};
   $('devPc').textContent = dev.pc || ''; $('devMic').textContent = dev.mic || '';
   newName = s.hotkey; $('hotkeyBtn').textContent = keyLabel(s.hotkey);
   $('settings').showModal();
 };
-$('hotkeyBtn').onclick = () => { $('hotkeyBtn').classList.add('listening'); $('hotkeyBtn').textContent = 'Tasten drücken …'; };
+$('hotkeyBtn').onclick = () => { $('hotkeyBtn').classList.add('listening'); $('hotkeyBtn').textContent = tr('Tasten drücken …'); };
 $('hotkeyBtn').addEventListener('keydown', e => {
   if (!$('hotkeyBtn').classList.contains('listening')) return;
   e.preventDefault(); e.stopPropagation();
   if (['Control', 'Alt', 'Shift', 'Meta', 'AltGraph'].includes(e.key)) return;
   const mods = [e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift'].filter(Boolean);
-  if (!mods.length && !/^F\d+$/.test(e.key)) { toast('Bitte mit Strg, Alt oder Umschalt kombinieren', true); return; }
+  if (!mods.length && !/^F\d+$/.test(e.key)) { toast(tr('Bitte mit Strg, Alt oder Umschalt kombinieren'), true); return; }
   const key = e.code.startsWith('Key') ? e.code.slice(3).toLowerCase()
             : e.code.startsWith('Digit') ? e.code.slice(5) : e.key.toLowerCase();
   newName = [...mods, key].join('+');
@@ -952,17 +1035,18 @@ $('settings').addEventListener('close', async () => {
   if ($('settings').returnValue !== 'save') return applyTheme(status.settings.theme || 'auto');
   saveTheme(form.theme.value);
   const body = {clip_seconds: +form.clip_seconds.value, fps: +form.fps.value, quality: form.quality.value,
-                theme: form.theme.value, audio: form.audio.checked, mic: form.mic.checked, mic_volume: +form.mic_volume.value, autostart: form.autostart.checked, sound: form.sound.checked, clip_dir: form.clip_dir.value,
+                theme: form.theme.value, language: form.language.value, audio: form.audio.checked, mic: form.mic.checked, mic_volume: +form.mic_volume.value, autostart: form.autostart.checked, sound: form.sound.checked, clip_dir: form.clip_dir.value,
                 hotkey: newName};
-  if (await guarded(() => api('/api/settings', body), 'Sichere …')) { toast('Gesichert'); libSig = null; poll(); }
+  if (await guarded(() => api('/api/settings', body), tr('Sichere …'))) { toast(tr('Gesichert')); libSig = null; poll(); }
 });
 $('quitBtn').onclick = async () => {
   $('settings').close('cancel');
-  if (!await ask('Clipper beenden?', 'Danach werden keine Clips mehr aufgenommen.', 'Beenden')) return;
+  if (!await ask(tr('Clipper beenden?'), tr('Danach werden keine Clips mehr aufgenommen.'), tr('Beenden'))) return;
   await api('/api/quit', {}).catch(() => {});
   window.close();
 };
 
+translatePage();
 poll();
 setInterval(poll, 1500);
 </script>

@@ -62,9 +62,33 @@ DEFAULTS = {
     "clip_dir": str(Path.home() / "Videos" / "Clips"),
     "autostart": False,
     "sound": True,
-    "theme": "auto",      # Erscheinungsbild: auto (wie Windows), light, dark
+    "theme": "auto",
+    "language": "auto",   # auto (wie Windows), de, en      # Erscheinungsbild: auto (wie Windows), light, dark
 }
 TEST = False
+LANG = "de"   # Sprache für Meldungen und Tray: "de" oder "en"
+
+
+def system_lang():
+    """Sprache der Windows-Oberfläche: Deutsch -> "de", alles andere -> "en"."""
+    try:
+        if IS_WIN:
+            import ctypes
+            return "de" if ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF == 0x07 else "en"
+        import locale
+        return "de" if (locale.getlocale()[0] or "").lower().startswith("de") else "en"
+    except Exception:
+        return "en"
+
+
+def set_lang(pref):
+    global LANG
+    LANG = pref if pref in ("de", "en") else system_lang()
+
+
+def L(de, en):
+    """Text in der eingestellten Sprache."""
+    return de if LANG == "de" else en
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 THUMB_DIR.mkdir(exist_ok=True)
@@ -135,7 +159,7 @@ def unique_path(path):
         p = path.with_name(f"{path.stem} ({i}){path.suffix}")
         if not p.exists():
             return p
-    raise RuntimeError("Kein freier Dateiname")
+    raise RuntimeError(L("Kein freier Dateiname", "No free file name"))
 
 
 def retry(fn, tries=10):
@@ -245,7 +269,7 @@ class AudioPump:
                     else:
                         time.sleep(0.005)
         except Exception as e:   # Ton kaputt -> Bild läuft trotzdem weiter (Stille)
-            self.errors[name] = ("Mikrofon: " if name == "mic" else "") + str(e)
+            self.errors[name] = (L("Mikrofon: ", "Microphone: ") if name == "mic" else "") + str(e)
             log.exception("Ton-Aufnahme (%s) fehlgeschlagen", name)
 
     def _read_test_tone(self, q, freq):
@@ -388,7 +412,8 @@ class Recorder:
         # Das jüngste Stück wird gerade noch geschrieben — weglassen, sonst kaputtes Ende
         segs = segs[:-1][-(seconds // SEGMENT_SECONDS):]
         if not segs:
-            raise RuntimeError("Noch nichts aufgenommen — gleich nochmal probieren.")
+            raise RuntimeError(L("Noch nichts aufgenommen — gleich nochmal probieren.",
+                                  "Nothing recorded yet — try again in a moment."))
         clip_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
         out = unique_path(clip_dir / f"Clip {stamp}.mp4")
@@ -405,7 +430,7 @@ class Recorder:
                      "-safe", "0", "-i", str(listfile), "-c", "copy",
                      "-movflags", "+faststart", str(out)])
         if r.returncode != 0:
-            raise RuntimeError("Clip fehlgeschlagen: " + r.stderr.strip()[-300:])
+            raise RuntimeError(L("Clip fehlgeschlagen: ", "Clip failed: ") + r.stderr.strip()[-300:])
         log.info("Clip gespeichert: %s (%d s)", out, len(segs))
         return out
 
@@ -481,7 +506,7 @@ class Library:
         lit = str(p).replace("'", "''")
         r = run(["powershell", "-NoProfile", "-Command", f"Set-Clipboard -LiteralPath '{lit}'"])
         if r.returncode != 0:
-            raise RuntimeError("Zwischenablage: " + r.stderr.strip()[-200:])
+            raise RuntimeError(L("Zwischenablage: ", "Clipboard: ") + r.stderr.strip()[-200:])
         return p
 
     def shrink(self, src):
@@ -495,7 +520,7 @@ class Library:
         for factor in (0.92, 0.75):   # zweiter Versuch, falls die Datei doch zu groß wird
             video = int(SHARE_LIMIT * 8 / 1000 / d * factor) - audio
             if video < 200:
-                raise ValueError("Clip ist zu lang für 10 MB. Erst kürzen.")
+                raise ValueError(L("Clip ist zu lang für 10 MB. Erst kürzen.", "Clip is too long for 10 MB. Trim it first."))
             height = 1080 if video >= 4000 else 720 if video >= 1500 else 480
             fps = 60 if video >= 4000 else 30
             r = run([self.app.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
@@ -503,10 +528,10 @@ class Library:
                      *encoder_args(self.app.recorder.encoder, fps, f"{video}k", False),
                      "-c:a", "aac", "-b:a", f"{audio}k", "-movflags", "+faststart", str(out)])
             if r.returncode != 0:
-                raise RuntimeError("Verkleinern fehlgeschlagen: " + r.stderr.strip()[-300:])
+                raise RuntimeError(L("Verkleinern fehlgeschlagen: ", "Shrinking failed: ") + r.stderr.strip()[-300:])
             if out.stat().st_size <= SHARE_LIMIT:
                 return out
-        raise RuntimeError("Clip ließ sich nicht unter 10 MB bringen.")
+        raise RuntimeError(L("Clip ließ sich nicht unter 10 MB bringen.", "Could not get the clip under 10 MB."))
 
     def has_audio(self, p):
         r = run([self.app.ffprobe, "-v", "error", "-select_streams", "a", "-show_entries",
@@ -518,7 +543,7 @@ class Library:
         src = self.path(name)
         segs = [(max(0.0, float(a)), float(b)) for a, b in segments if float(b) - float(a) >= 0.05]
         if not segs or sum(b - a for a, b in segs) < 0.3:
-            raise ValueError("Auswahl ist zu kurz.")
+            raise ValueError(L("Auswahl ist zu kurz.", "Selection is too short."))
         s = self.app.settings
         audio = self.has_audio(src)
         # trim/atrim + concat: bildgenau, auch für mehrere Teile
@@ -540,7 +565,7 @@ class Library:
                  "-movflags", "+faststart", str(tmp)])
         if r.returncode != 0:
             tmp.unlink(missing_ok=True)
-            raise RuntimeError("Schneiden fehlgeschlagen: " + r.stderr.strip()[-300:])
+            raise RuntimeError(L("Schneiden fehlgeschlagen: ", "Cutting failed: ") + r.stderr.strip()[-300:])
         if replace:
             retry(lambda: os.replace(tmp, src))
             return src
@@ -552,10 +577,10 @@ class Library:
         src = self.path(name)
         new = re.sub(r'[<>:"/\\|?*]', "", new).strip().removesuffix(".mp4").strip()
         if not new:
-            raise ValueError("Name ist leer.")
+            raise ValueError(L("Name ist leer.", "Name is empty."))
         dst = src.with_name(new + ".mp4")
         if dst.exists() and dst != src:
-            raise ValueError("Es gibt schon einen Clip mit diesem Namen.")
+            raise ValueError(L("Es gibt schon einen Clip mit diesem Namen.", "A clip with this name already exists."))
         retry(lambda: os.replace(src, dst))
         return dst
 
@@ -640,17 +665,16 @@ class App:
         try:
             out = self.recorder.save_clip(self.library.dir, int(self.settings["clip_seconds"]))
             self.last_clip = {"name": out.name, "time": time.time()}
-            self.notify("Clip gespeichert", out.name)
+            self.notify(L("Clip gespeichert", "Clip saved"), out.name, True)
             return out
         except Exception as e:
             log.exception("Clip fehlgeschlagen")
-            self.notify("Clip fehlgeschlagen", str(e))
+            self.notify(L("Clip fehlgeschlagen", "Clip failed"), str(e), False)
             raise
         finally:
             self.clip_lock.release()
 
-    def notify(self, title, text):
-        ok = "gespeichert" in title
+    def notify(self, title, text, ok):
         if IS_WIN and self.settings.get("sound", True):
             try:
                 import winsound
@@ -682,6 +706,7 @@ class App:
         s["autostart"] = bool(new.get("autostart", s["autostart"]))
         s["sound"] = bool(new.get("sound", s["sound"]))
         s["theme"] = new["theme"] if new.get("theme") in ("auto", "light", "dark") else s["theme"]
+        s["language"] = new["language"] if new.get("language") in ("auto", "de", "en") else s["language"]
         self.settings = s
         SETTINGS_FILE.write_text(json.dumps(s, indent=2, ensure_ascii=False), "utf-8")
         if any(s[k] != old[k] for k in ("clip_seconds", "fps", "quality", "audio", "mic", "mic_volume")):
@@ -692,6 +717,11 @@ class App:
             set_autostart(s["autostart"])
         if s["theme"] != old["theme"]:
             style_titlebar(s["theme"])
+        if s["language"] != old["language"]:
+            set_lang(s["language"])
+            if self.tray:
+                self.tray.title = L("Clipper — nimmt auf", "Clipper — recording")
+                self.tray.update_menu()
         return s
 
     def status(self):
@@ -702,6 +732,7 @@ class App:
             "encoder": rec.encoder,
             "error": "" if rec.running else rec.error,
             "audio_error": audio_error,
+            "lang": LANG,
             "audio_devices": rec.audio.devices if rec.audio else {},
             "hotkey_error": self.hotkey_error,
             "settings": self.settings,
@@ -904,14 +935,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_file(APP.library.thumbnail(unquote(parts[2])), "image/jpeg")
             if parts[1] == "strip":
                 return self.send_file(APP.library.strip(unquote(parts[2])), "image/jpeg")
-            self.send_json({"error": "nicht gefunden"}, 404)
+            self.send_json({"error": L("nicht gefunden", "not found")}, 404)
         except FileNotFoundError:
-            self.send_json({"error": "nicht gefunden"}, 404)
+            self.send_json({"error": L("nicht gefunden", "not found")}, 404)
 
     def do_POST(self):
         # Eigener Header: fremde Webseiten können ihn nicht setzen (CORS), also nichts löschen
         if self.headers.get("X-Clipper") != "1":
-            return self.send_json({"error": "verboten"}, 403)
+            return self.send_json({"error": L("verboten", "forbidden")}, 403)
         try:
             n = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(n) or b"{}")
@@ -944,9 +975,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True})
                 threading.Timer(0.3, APP.quit).start()
                 return
-            self.send_json({"error": "nicht gefunden"}, 404)
+            self.send_json({"error": L("nicht gefunden", "not found")}, 404)
         except FileNotFoundError:
-            self.send_json({"error": "Clip nicht gefunden."}, 404)
+            self.send_json({"error": L("Clip nicht gefunden.", "Clip not found.")}, 404)
         except Exception as e:
             log.exception("Fehler bei %s", self.path)
             self.send_json({"error": str(e)}, 400)
@@ -964,11 +995,13 @@ def run_tray(app):
             time.sleep(3600)
     img = make_logo(64)
     menu = pystray.Menu(
-        pystray.MenuItem("Clipper öffnen", lambda: open_window(), default=True),
-        pystray.MenuItem("Clip speichern", lambda: threading.Thread(target=app.clip_now, daemon=True).start()),
-        pystray.MenuItem("Beenden", lambda: app.quit()),
+        # Texte als Funktion: pystray fragt sie bei jedem Öffnen neu ab (Sprachwechsel)
+        pystray.MenuItem(lambda item: L("Clipper öffnen", "Open Clipper"), lambda: open_window(), default=True),
+        pystray.MenuItem(lambda item: L("Clip aufnehmen", "Record clip"),
+                         lambda: threading.Thread(target=app.clip_now, daemon=True).start()),
+        pystray.MenuItem(lambda item: L("Beenden", "Quit"), lambda: app.quit()),
     )
-    app.tray = pystray.Icon("Clipper", img, "Clipper — nimmt auf", menu)
+    app.tray = pystray.Icon("Clipper", img, L("Clipper — nimmt auf", "Clipper — recording"), menu)
     app.tray.run()
 
 
@@ -979,13 +1012,16 @@ def main():
     ap.add_argument("--hidden", action="store_true", help="ohne Fenster starten (Autostart)")
     args = ap.parse_args()
     TEST = args.test
+    set_lang(load_settings().get("language"))
     if not TEST and not IS_WIN:
         sys.exit("Bildschirmaufnahme gibt es nur unter Windows. Zum Testen: --test")
 
     ffmpeg, ffprobe = find_tool("ffmpeg"), find_tool("ffprobe")
     if not ffmpeg or not ffprobe:
-        message_box("ffmpeg nicht gefunden.\n\nInstallieren mit:  winget install Gyan.FFmpeg\n"
-                    "Danach Clipper neu starten.")
+        message_box(L("ffmpeg nicht gefunden.\n\nInstallieren mit:  winget install Gyan.FFmpeg\n"
+                      "Danach Clipper neu starten.",
+                      "ffmpeg not found.\n\nInstall it with:  winget install Gyan.FFmpeg\n"
+                      "Then start Clipper again."))
         sys.exit(1)
 
     try:
