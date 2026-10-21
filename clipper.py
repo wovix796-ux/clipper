@@ -62,28 +62,10 @@ DEFAULTS = {
     "clip_dir": str(Path.home() / "Videos" / "Clips"),
     "autostart": False,
     "sound": True,
-    "theme": "auto",
-    "language": "auto",   # auto (wie Windows), de, en      # Erscheinungsbild: auto (wie Windows), light, dark
+    "theme": "auto",      # Erscheinungsbild: auto (wie Windows), light, dark
 }
 TEST = False
-LANG = "de"   # Sprache für Meldungen und Tray: "de" oder "en"
-
-
-def system_lang():
-    """Sprache der Windows-Oberfläche: Deutsch -> "de", alles andere -> "en"."""
-    try:
-        if IS_WIN:
-            import ctypes
-            return "de" if ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF == 0x07 else "en"
-        import locale
-        return "de" if (locale.getlocale()[0] or "").lower().startswith("de") else "en"
-    except Exception:
-        return "en"
-
-
-def set_lang(pref):
-    global LANG
-    LANG = pref if pref in ("de", "en") else system_lang()
+LANG = "en"   # Clipper ist nur noch auf Englisch. Die deutschen Texte bleiben im Code als Ausgangstext.
 
 
 def L(de, en):
@@ -708,7 +690,6 @@ class App:
         s["autostart"] = bool(new.get("autostart", s["autostart"]))
         s["sound"] = bool(new.get("sound", s["sound"]))
         s["theme"] = new["theme"] if new.get("theme") in ("auto", "light", "dark") else s["theme"]
-        s["language"] = new["language"] if new.get("language") in ("auto", "de", "en") else s["language"]
         self.settings = s
         SETTINGS_FILE.write_text(json.dumps(s, indent=2, ensure_ascii=False), "utf-8")
         if any(s[k] != old[k] for k in ("clip_seconds", "fps", "quality", "audio", "mic", "mic_volume")):
@@ -719,11 +700,6 @@ class App:
             set_autostart(s["autostart"])
         if s["theme"] != old["theme"]:
             style_titlebar(s["theme"])
-        if s["language"] != old["language"]:
-            set_lang(s["language"])
-            if self.tray:
-                self.tray.title = L("Clipper — nimmt auf", "Clipper — recording")
-                self.tray.update_menu()
         return s
 
     def status(self):
@@ -1014,7 +990,6 @@ def main():
     ap.add_argument("--hidden", action="store_true", help="ohne Fenster starten (Autostart)")
     args = ap.parse_args()
     TEST = args.test
-    set_lang(load_settings().get("language"))
     if not TEST and not IS_WIN:
         sys.exit("Bildschirmaufnahme gibt es nur unter Windows. Zum Testen: --test")
 

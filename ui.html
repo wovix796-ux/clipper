@@ -16,10 +16,7 @@
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   }
   applyTheme(themePref);
-  // Sprache: zuletzt vom Programm gemeldete, sonst die des Systems
-  let langPref = '';
-  try { langPref = localStorage.getItem('lang') || ''; } catch (e) {}
-  document.documentElement.lang = langPref || (navigator.language.toLowerCase().startsWith('de') ? 'de' : 'en');
+  document.documentElement.lang = 'en';   // Clipper ist nur auf Englisch
   darkMq.addEventListener('change', () => applyTheme(themePref));
 </script>
 <style>
@@ -383,8 +380,6 @@
           <label><input type="radio" name="theme" value="light"><span>Hell</span></label>
           <label><input type="radio" name="theme" value="dark"><span>Dunkel</span></label>
         </div></div>
-      <div class="row"><label>Sprache</label>
-        <select name="language"><option value="auto">Automatisch</option><option value="de">Deutsch</option><option value="en">English</option></select></div>
     </div>
     <div class="group">
       <div class="row"><label>Tastenkürzel</label><button type="button" id="hotkeyBtn">Alt+R</button></div>
@@ -434,8 +429,8 @@
 
 <script>
 const $ = id => document.getElementById(id);
-// --- Sprache: Deutsch ist der Ausgangstext, EN die Übersetzung. tr() übersetzt Texte im Skript,
-// translatePage() die festen Texte und Tooltips im HTML. ---
+// --- Sprache: Clipper ist nur auf Englisch. Die Texte im Code sind Deutsch, EN übersetzt sie.
+// tr() übersetzt Texte im Skript, translatePage() die festen Texte und Tooltips im HTML. ---
 const EN = {
   'Verbinde …': 'Connecting …', 'Clip-Ordner öffnen': 'Open clip folder', 'Einstellungen': 'Settings',
   'Clip aufnehmen': 'Record clip', 'Noch keine Clips': 'No clips yet', 'Drück': 'Press',
@@ -475,7 +470,7 @@ const EN = {
   'Sichere …': 'Saving …', 'Gesichert': 'Saved', 'Clipper beenden?': 'Quit Clipper?',
   'Danach werden keine Clips mehr aufgenommen.': 'No more clips will be recorded after that.', 'Beenden': 'Quit',
 };
-let lang = document.documentElement.lang === 'de' ? 'de' : 'en';
+let lang = 'en';
 function tr(text, vars) {
   let out = lang === 'en' && EN[text] !== undefined ? EN[text] : text;
   for (const k in vars || {}) out = out.replace('{' + k + '}', vars[k]);
@@ -498,14 +493,6 @@ function translatePage() {
     trNode(n, () => n.data, v => n.data = v);
   }
   for (const el of document.querySelectorAll('[title]')) trNode(el, () => el.title, v => el.title = v);
-}
-function setLang(next) {
-  if (next === lang) return;
-  lang = next;
-  document.documentElement.lang = lang;
-  try { localStorage.setItem('lang', lang); } catch (e) {}
-  translatePage();
-  if (clips.length) loadClips();
 }
 
 let clips = [], status = null, libSig = null, lastClipTime = null, current = null;
@@ -546,7 +533,7 @@ const fmtSize = b => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : (b / 1e6).toFixed(
 const keyLabel = k => k.split('+').map(p => p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1)).join('+');
 function fmtDate(t) {
   const d = new Date(t * 1000), now = new Date();
-  const loc = lang === 'de' ? 'de-AT' : navigator.language;
+  const loc = 'en-GB';
   const time = d.toLocaleTimeString(loc, {hour: '2-digit', minute: '2-digit'});
   if (d.toDateString() === now.toDateString()) return tr('Heute, ') + time;
   const y = new Date(now); y.setDate(now.getDate() - 1);
@@ -633,7 +620,6 @@ async function poll() {
     status = await api('/api/status');
     const s = status.settings;
     const pill = $('pill');
-    if (status.lang) setLang(status.lang);
     const problems = [status.error && tr('Aufnahme: ') + status.error, status.audio_error && tr('Ton: ') + status.audio_error,
                       status.hotkey_error && tr('Tastenkürzel: ') + status.hotkey_error].filter(Boolean);
     if (status.recording) {
@@ -1005,7 +991,6 @@ $('settingsBtn').onclick = () => {
   form.audio.checked = s.audio; form.autostart.checked = s.autostart; form.sound.checked = s.sound !== false; form.clip_dir.value = s.clip_dir;
   form.mic.checked = s.mic; form.mic_volume.value = s.mic_volume;
   form.theme.value = s.theme || 'auto';
-  form.language.value = s.language || 'auto';
   const dev = status.audio_devices || {};
   $('devPc').textContent = dev.pc || ''; $('devMic').textContent = dev.mic || '';
   newName = s.hotkey; $('hotkeyBtn').textContent = keyLabel(s.hotkey);
@@ -1035,7 +1020,7 @@ $('settings').addEventListener('close', async () => {
   if ($('settings').returnValue !== 'save') return applyTheme(status.settings.theme || 'auto');
   saveTheme(form.theme.value);
   const body = {clip_seconds: +form.clip_seconds.value, fps: +form.fps.value, quality: form.quality.value,
-                theme: form.theme.value, language: form.language.value, audio: form.audio.checked, mic: form.mic.checked, mic_volume: +form.mic_volume.value, autostart: form.autostart.checked, sound: form.sound.checked, clip_dir: form.clip_dir.value,
+                theme: form.theme.value, audio: form.audio.checked, mic: form.mic.checked, mic_volume: +form.mic_volume.value, autostart: form.autostart.checked, sound: form.sound.checked, clip_dir: form.clip_dir.value,
                 hotkey: newName};
   if (await guarded(() => api('/api/settings', body), tr('Sichere …'))) { toast(tr('Gesichert')); libSig = null; poll(); }
 });

@@ -32,13 +32,10 @@ CloseApplications=force
 RestartApplications=no
 
 [Languages]
-Name: "de"; MessagesFile: "compiler:Languages\German.isl"
 Name: "en"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
-de.FfmpegTask=ffmpeg installieren (wird für die Aufnahme gebraucht)
 en.FfmpegTask=Install ffmpeg (needed for recording)
-de.FfmpegStatus=ffmpeg wird installiert …
 en.FfmpegStatus=Installing ffmpeg …
 
 [Tasks]
