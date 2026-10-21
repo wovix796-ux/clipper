@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://wovix796-ux.github.io/clipper/sitemap.xml

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipper – Free Clipping Tool Like Discord's | Save the Last 30 Seconds on PC</title>
+<meta name="description" content="Want Discord's clipping tool? Get it for free. Clipper saves the last 30 seconds of your PC screen with game audio, friends on the call and your mic. Press Alt+R. No Nitro, no account, no cloud.">
+<meta name="keywords" content="discord clips free, free clipping tool, discord clip alternative, shadowplay alternative, medal alternative, save last 30 seconds pc, replay buffer windows, instant replay pc, clip games free, screen recorder windows">
+<link rel="canonical" href="https://wovix796-ux.github.io/clipper/">
+<link rel="icon" type="image/png" href="logo.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Clipper – Discord's clipping tool, for free">
+<meta property="og:description" content="Press Alt+R and the last 30 seconds of your PC are saved, with game audio, your friends on the call and your mic. Free, no account.">
+<meta property="og:url" content="https://wovix796-ux.github.io/clipper/">
+<meta property="og:image" content="https://wovix796-ux.github.io/clipper/logo.png">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Clipper",
+  "operatingSystem": "Windows 10, Windows 11",
+  "applicationCategory": "MultimediaApplication",
+  "description": "Free replay buffer for Windows. Press Alt+R to save the last 30 seconds of your screen with desktop audio and microphone, then trim and share the clip.",
+  "url": "https://wovix796-ux.github.io/clipper/",
+  "downloadUrl": "https://github.com/wovix796-ux/clipper/releases/latest/download/Clipper-Setup.exe",
+  "softwareVersion": "1.2.2",
+  "license": "https://opensource.org/licenses/MIT",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<style>
+  :root {
+    --bg: #f5f5f7; --surface: #fff; --label: #1d1d1f; --label2: #6e6e73; --sep: rgba(0,0,0,.08);
+    --accent: #ff3b30; --grad: linear-gradient(160deg, #ff7a45, #e91e63);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #000; --surface: #1c1c1e; --label: #f5f5f7; --label2: #a1a1a6; --sep: rgba(255,255,255,.1); --accent: #ff453a; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--label);
+    font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+  nav { display: flex; align-items: center; gap: 10px; padding: 16px 0; font-weight: 600; }
+  nav img { width: 28px; height: 28px; }
+  nav .sp { flex: 1; }
+  nav a.gh { font-weight: 500; font-size: 15px; color: var(--label2); text-decoration: none; }
+  header { text-align: center; padding: 56px 0 40px; }
+  header img { width: 104px; height: 104px; filter: drop-shadow(0 12px 28px rgba(233,30,99,.35)); }
+  h1 { font-size: clamp(34px, 6vw, 60px); line-height: 1.05; letter-spacing: -.03em; margin: 28px 0 16px; }
+  h1 span { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { font-size: clamp(18px, 2.4vw, 22px); color: var(--label2); max-width: 640px; margin: 0 auto 32px; }
+  kbd { display: inline-block; padding: 1px 8px; border-radius: 6px; background: var(--surface); color: var(--label);
+    font: 600 .9em/1.5 inherit; box-shadow: 0 0 0 1px var(--sep), 0 2px 0 var(--sep); }
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 15px 28px; border-radius: 980px;
+    background: var(--grad); color: #fff; font-weight: 600; font-size: 18px; text-decoration: none;
+    box-shadow: 0 10px 30px rgba(233,30,99,.35); transition: transform 160ms var(--ease-out), box-shadow 200ms ease; }
+  .btn:active { transform: scale(0.97); }
+  @media (hover: hover) and (pointer: fine) { .btn:hover { box-shadow: 0 14px 36px rgba(233,30,99,.45); } }
+  .btn svg { width: 20px; height: 20px; }
+  .meta { margin-top: 14px; font-size: 14px; color: var(--label2); }
+  .meta a { color: var(--label2); }
+  section { padding: 48px 0; }
+  h2 { font-size: clamp(26px, 4vw, 38px); letter-spacing: -.02em; text-align: center; margin: 0 0 32px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .card { background: var(--surface); border-radius: 18px; padding: 24px; box-shadow: 0 0 0 1px var(--sep); }
+  .card b { display: block; font-size: 19px; margin-bottom: 6px; }
+  .card p { margin: 0; color: var(--label2); font-size: 16px; }
+  .steps { counter-reset: s; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .steps div { background: var(--surface); border-radius: 18px; padding: 24px; box-shadow: 0 0 0 1px var(--sep); }
+  .steps div::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 32px; height: 32px;
+    border-radius: 50%; background: var(--grad); color: #fff; font-weight: 700; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 18px; overflow: hidden;
+    box-shadow: 0 0 0 1px var(--sep); font-size: 16px; }
+  th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--sep); }
+  th { font-size: 14px; color: var(--label2); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.yes { color: #34c759; font-weight: 600; }
+  td.no { color: var(--label2); }
+  .tablewrap { overflow-x: auto; }
+  details { background: var(--surface); border-radius: 14px; padding: 16px 20px; box-shadow: 0 0 0 1px var(--sep); margin-bottom: 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { color: var(--label2); margin: 10px 0 0; }
+  footer { text-align: center; padding: 40px 0 56px; color: var(--label2); font-size: 14px; }
+  .cta { text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav><img src="logo.png" alt="">Clipper<span class="sp"></span><a class="gh" href="https://github.com/wovix796-ux/clipper">GitHub</a></nav>
+
+  <header>
+    <img src="logo.png" alt="Clipper logo">
+    <h1>Want Discord's clipping tool?<br><span>Get it here for free.</span></h1>
+    <p class="lead">Press <kbd>Alt+R</kbd> and Clipper saves the last 30 seconds of your PC, with game audio, your friends on the call and your mic. No Nitro, no account, no cloud.</p>
+    <a class="btn" href="https://github.com/wovix796-ux/clipper/releases/latest/download/Clipper-Setup.exe">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/></svg>
+      Download for Windows</a>
+    <div class="meta">Free &amp; open source · Windows 10 and 11 · 25 MB · <a href="https://github.com/wovix796-ux/clipper">Source on GitHub</a></div>
+  </header>
+
+  <section>
+    <h2>Everything you need to clip</h2>
+    <div class="grid">
+      <div class="card"><b>Instant replay</b><p>Clipper records in the background. One key saves the last 15 seconds to 5 minutes, instantly.</p></div>
+      <div class="card"><b>Both sides of the call</b><p>Game audio, your friends on Discord and your own microphone, mixed in sync.</p></div>
+      <div class="card"><b>Editor like Clipchamp</b><p>Split, cut and trim on a timeline with real frames. Saves frame-accurately as a new clip.</p></div>
+      <div class="card"><b>Share in one click</b><p>Copy, then Ctrl+V into Discord or WhatsApp. "For Discord" shrinks the clip under 10 MB.</p></div>
+      <div class="card"><b>Light on your PC</b><p>Encodes on your graphics card: NVIDIA NVENC, AMD AMF or Intel Quick Sync.</p></div>
+      <div class="card"><b>Private by design</b><p>Everything stays on your PC. No account, no upload, no tracking.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Set up in a minute</h2>
+    <div class="steps">
+      <div><b>Download</b><p>Get <code>Clipper-Setup.exe</code> and run it. No admin rights needed.</p></div>
+      <div><b>Install</b><p>Click Install. If ffmpeg is missing, the setup adds it for you.</p></div>
+      <div><b>Clip</b><p>Play, talk, and when something great happens, press <kbd>Alt+R</kbd>.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Clipper vs. the others</h2>
+    <div class="tablewrap">
+      <table>
+        <tr><th></th><th>Clipper</th><th>Discord Clips</th><th>ShadowPlay</th></tr>
+        <tr><td>Works with any graphics card</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">NVIDIA only</td></tr>
+        <tr><td>Works without Discord open</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Built-in editor with timeline</td><td class="yes">Yes</td><td class="no">Basic</td><td class="no">No</td></tr>
+        <tr><td>No account needed</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Open source</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Questions</h2>
+    <details><summary>Is Clipper really free?</summary><p>Yes. Clipper is free and open source under the MIT license. No ads, no subscription, no account.</p></details>
+    <details><summary>Does Clipper record my friends on Discord?</summary><p>Yes. Clipper records your PC audio, which includes everyone you hear on the call, and mixes in your own microphone.</p></details>
+    <details><summary>How do I save the last 30 seconds on my PC?</summary><p>Install Clipper and press Alt+R. The last 30 seconds are saved to Videos\Clips. You can change the key and the length (15 seconds to 5 minutes) in the settings.</p></details>
+    <details><summary>Is Clipper made by Discord?</summary><p>No. Clipper is an independent project and is not affiliated with Discord. It works with any game or app, with or without Discord.</p></details>
+    <details><summary>Windows says the app is unrecognized. Is it safe?</summary><p>Windows SmartScreen warns about apps that aren't signed with a paid certificate. Click "More info" and "Run anyway". The full source code is on GitHub.</p></details>
+  </section>
+
+  <section class="cta">
+    <a class="btn" href="https://github.com/wovix796-ux/clipper/releases/latest/download/Clipper-Setup.exe">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/></svg>
+      Download Clipper for free</a>
+  </section>
+
+  <footer>Clipper is an independent open-source project and is not affiliated with Discord, NVIDIA or Medal.<br>
+    <a href="https://github.com/wovix796-ux/clipper">GitHub</a> · <a href="https://github.com/wovix796-ux/clipper/blob/main/LICENSE">MIT License</a></footer>
+</div>
+</body>
+</html>
