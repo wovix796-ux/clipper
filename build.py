@@ -1,0 +1,83 @@
+"""Baut Clipper.exe und installiert sie mit Startmenü- und Desktop-Verknüpfung.
+
+Aufruf: python build.py   (oder "App bauen.bat" doppelklicken)
+Ziel:   %LOCALAPPDATA%\\Programs\\Clipper\\Clipper.exe
+"""
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+BUILD = Path(os.environ.get("TEMP", HERE)) / "clipper_build"
+TARGET = Path(os.environ["LOCALAPPDATA"]) / "Programs" / "Clipper"
+EXE = TARGET / "Clipper.exe"
+
+
+def sh(*cmd):
+    print(">", " ".join(map(str, cmd)))
+    subprocess.run(list(map(str, cmd)), check=True)
+
+
+def make_icon(path):
+    sys.path.insert(0, str(HERE))
+    from logo import make_logo
+    make_logo(256).save(path, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+
+
+def shortcut(lnk):
+    ps = (f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{lnk}'); "
+          f"$s.TargetPath = '{EXE}'; $s.WorkingDirectory = '{TARGET}'; "
+          f"$s.IconLocation = '{EXE},0'; $s.Description = 'Clipper - letzte 30 s speichern'; $s.Save()")
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=True)
+
+
+def main():
+    sh(sys.executable, "-m", "pip", "install", "-q", "--disable-pip-version-check",
+       "-r", HERE / "requirements.txt", "pyinstaller")
+    BUILD.mkdir(exist_ok=True)
+    icon = BUILD / "clipper.ico"
+    make_icon(icon)
+    sh(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed",
+       "--name", "Clipper", "--icon", icon,
+       "--add-data", f"{HERE / 'ui.html'};.",
+       "--collect-all", "soundcard", "--hidden-import", "pystray._win32",
+       "--distpath", BUILD / "dist", "--workpath", BUILD / "work", "--specpath", BUILD,
+       HERE / "clipper.py")
+
+    # laufendes Clipper beenden, sonst sind die Dateien gesperrt
+    subprocess.run(["taskkill", "/f", "/im", "Clipper.exe"], capture_output=True)
+    # Nur den Inhalt löschen: Den Ordner selbst kann ein offenes Fenster als Arbeitsordner sperren.
+    TARGET.mkdir(parents=True, exist_ok=True)
+    for _ in range(60):   # Windows (und der Virenscanner) geben die Dateien erst kurz danach frei
+        try:
+            for p in TARGET.iterdir():
+                shutil.rmtree(p) if p.is_dir() else p.unlink()
+            break
+        except PermissionError:
+            time.sleep(0.5)
+    else:
+        sys.exit(f"{TARGET} ist noch gesperrt. Clipper beenden und nochmal versuchen.")
+    shutil.copytree(BUILD / "dist" / "Clipper", TARGET, dirs_exist_ok=True)
+
+    shell_dirs = subprocess.run(
+        ["powershell", "-NoProfile", "-Command",
+         "[Environment]::GetFolderPath('Desktop'); [Environment]::GetFolderPath('Programs')"],
+        capture_output=True, text=True, check=True).stdout.split("\n")
+    desktop, programs = (Path(p.strip()) for p in shell_dirs[:2])
+    shortcut(desktop / "Clipper.lnk")
+    shortcut(programs / "Clipper.lnk")
+
+    # Autostart auf die exe umstellen, falls er schon an war
+    vbs = Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs/Startup/Clipper.vbs"
+    if vbs.exists():
+        vbs.write_text('Set sh = CreateObject("WScript.Shell")\r\n'
+                       f'sh.Run """{EXE}"" --hidden", 0, False\r\n', encoding="utf-8")
+
+    print(f"\nFertig: {EXE}\nVerknüpfungen auf dem Desktop und im Startmenü angelegt.")
+
+
+if __name__ == "__main__":
+    main()

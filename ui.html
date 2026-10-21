@@ -1,0 +1,970 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipper</title>
+<link rel="icon" type="image/png" sizes="256x256" href="/icon.png">
+<script>
+  // Farbschema vor dem ersten Zeichnen setzen (kein Aufblitzen). "auto" folgt Windows.
+  const darkMq = matchMedia('(prefers-color-scheme: dark)');
+  let themePref = 'auto';
+  try { themePref = localStorage.getItem('theme') || 'auto'; } catch (e) {}
+  function applyTheme(pref) {
+    themePref = pref || 'auto';
+    const dark = themePref === 'dark' || (themePref === 'auto' && darkMq.matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  }
+  applyTheme(themePref);
+  darkMq.addEventListener('change', () => applyTheme(themePref));
+</script>
+<style>
+  /* Apple-Systemfarben. data-theme setzt das Skript im <head>: Einstellung oder Windows-Vorgabe */
+  :root {
+    color-scheme: light;
+    --bg: #f5f5f7; --surface: #ffffff; --surface2: #f2f2f7; --fill: rgba(120,120,128,.12);
+    --fill-hover: rgba(120,120,128,.2); --sep: rgba(60,60,67,.14);
+    --label: #1d1d1f; --label2: rgba(60,60,67,.62); --label3: rgba(60,60,67,.38);
+    --blue: #007aff; --red: #ff3b30; --yellow: #ffcc00; --green: #34c759; --orange: #ff9500;
+    --bar: rgba(245,245,247,.72); --hud: rgba(250,250,252,.82);
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.08);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --font: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #000000; --surface: #1c1c1e; --surface2: #2c2c2e; --fill: rgba(120,120,128,.24);
+    --fill-hover: rgba(120,120,128,.34); --sep: rgba(84,84,88,.5);
+    --label: #f5f5f7; --label2: rgba(235,235,245,.6); --label3: rgba(235,235,245,.3);
+    --blue: #0a84ff; --red: #ff453a; --yellow: #ffd60a; --green: #30d158; --orange: #ff9f0a;
+    --bar: rgba(22,22,24,.72); --hud: rgba(44,44,46,.8);
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.5);
+  }
+  /* Segmentierte Auswahl wie in macOS */
+  .segmented { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--fill); }
+  .segmented label { position: relative; }
+  .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+  .segmented span { display: block; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: background-color 150ms ease, box-shadow 150ms ease; }
+  .segmented input:checked + span { background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.15), 0 0 0 .5px var(--sep); }
+  .segmented input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--blue) 50%, transparent); }
+  [data-theme="dark"] .segmented input:checked + span { background: #636366; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--label);
+    font: 14px/1.43 var(--font); letter-spacing: -.01em; -webkit-font-smoothing: antialiased; }
+  button, input, select { font: inherit; color: inherit; letter-spacing: inherit; }
+  :focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 50%, transparent); outline-offset: 1px; }
+  svg.i { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Buttons */
+  button { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    background: var(--fill); border: 0; border-radius: 980px; padding: 7px 15px; cursor: pointer;
+    font-weight: 500; white-space: nowrap;
+    transition: background-color 150ms ease, transform 160ms var(--ease-out), opacity 150ms ease; }
+  button:active { transform: scale(0.97); }
+  button.primary { background: var(--blue); color: #fff; }
+  button.record { background: var(--red); color: #fff; }
+  button.record b { width: 9px; height: 9px; border-radius: 50%; background: #fff; }
+  button.plain { background: transparent; color: var(--blue); padding: 7px 10px; }
+  button.icon { width: 34px; height: 34px; padding: 0; background: transparent; color: var(--label2); }
+  button.danger-text { color: var(--red); }
+  button:disabled { opacity: .4; cursor: default; }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover { background: var(--fill-hover); }
+    button.primary:hover { background: color-mix(in srgb, var(--blue) 88%, #fff); }
+    button.record:hover { background: color-mix(in srgb, var(--red) 88%, #fff); }
+    button.plain:hover, button.icon:hover { background: var(--fill); }
+    button.icon:hover { color: var(--label); }
+  }
+  kbd { display: inline-block; min-width: 20px; text-align: center; background: var(--surface);
+    border-radius: 5px; padding: 0 6px; font: 500 12px/20px var(--font);
+    box-shadow: 0 0 0 .5px var(--sep), 0 1px 0 var(--sep); color: var(--label); }
+
+  /* Werkzeugleiste */
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px;
+    height: 56px; padding: 0 20px; background: var(--bar); border-bottom: .5px solid var(--sep);
+    backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
+  .logo { display: flex; align-items: center; gap: 9px; font: 600 15px var(--font-display); }
+  .logo svg { width: 24px; height: 24px; flex: none; }
+  .pill { display: flex; align-items: center; gap: 7px; margin-left: 10px; padding: 4px 11px 4px 9px;
+    border-radius: 980px; background: var(--fill); color: var(--label2); font-size: 12px; font-weight: 500; }
+  .pill b { width: 7px; height: 7px; border-radius: 50%; background: var(--label3); }
+  .pill.rec b { background: var(--red); animation: pulse 2s ease-in-out infinite; }
+  .pill.err b { background: var(--orange); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .spacer { flex: 1; }
+
+  /* Bibliothek */
+  main { padding: 28px 32px 48px; max-width: 1560px; margin: 0 auto; }
+  .bar { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+  .bar h1 { font: 700 30px/1.1 var(--font-display); letter-spacing: -.025em; margin: 0; }
+  .bar span { color: var(--label2); font-size: 15px; }
+  .alert { display: none; align-items: center; gap: 10px; background: color-mix(in srgb, var(--orange) 14%, var(--surface));
+    color: var(--label); padding: 11px 14px; border-radius: 12px; margin-bottom: 20px; font-size: 13px; }
+  .alert::before { content: "!"; flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--orange);
+    color: #fff; font: 700 12px/18px var(--font); text-align: center; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 26px 20px; }
+  .card { cursor: pointer; border-radius: 14px; outline: none; }
+  .thumb { position: relative; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden;
+    box-shadow: var(--shadow); transition: transform 200ms var(--ease-out), box-shadow 200ms ease; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb .dur { position: absolute; right: 7px; bottom: 7px; padding: 1px 7px; border-radius: 6px;
+    background: rgba(0,0,0,.45); color: #fff; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  /* Hover-Scrubbing: Filmstreifen-Bild, je nach Mausposition verschoben. Ohne Animation, folgt der Maus direkt. */
+  .thumb .scrub { position: absolute; inset: 0; background-repeat: no-repeat; background-size: 2000% 100%; display: none; }
+  .thumb .scrubbar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.25); display: none; }
+  .thumb .scrubbar i { display: block; height: 100%; width: 0; background: #fff; }
+  .thumb.scrubbing .scrub, .thumb.scrubbing .scrubbar { display: block; }
+  .thumb.scrubbing .dur { display: none; }
+  .thumb .copy { position: absolute; top: 7px; right: 7px; padding: 4px 10px; font-size: 12px; font-weight: 600;
+    background: rgba(0,0,0,.45); color: #fff; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    opacity: 0; transition: opacity 150ms ease, transform 160ms var(--ease-out), background-color 150ms ease; }
+  .card:hover .thumb .copy, .card:focus-within .thumb .copy { opacity: 1; }
+  .card:active .thumb { transform: scale(0.98); }
+  .card:focus-visible .thumb { outline: 3px solid var(--blue); outline-offset: 2px; }
+  @media (hover: hover) and (pointer: fine) {
+    .card:hover .thumb { transform: scale(1.015); }
+    .thumb .copy:hover { background: rgba(0,0,0,.65); }
+  }
+  .card .meta { padding: 9px 2px 0; }
+  .card .name { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .sub { color: var(--label2); font-size: 12px; margin-top: 1px; }
+  .card.new .thumb { animation: pop 400ms var(--ease-out); box-shadow: 0 0 0 3px var(--blue), var(--shadow); }
+  @keyframes pop { from { transform: scale(.95); opacity: 0; } }
+  .empty { text-align: center; padding: 110px 20px; color: var(--label2); }
+  .empty .glyph { width: 64px; height: 64px; margin: 0 auto 18px; border-radius: 18px; background: var(--fill);
+    display: grid; place-items: center; color: var(--label3); }
+  .empty .glyph svg { width: 30px; height: 30px; }
+  .empty h2 { color: var(--label); font: 600 20px var(--font-display); margin: 0 0 6px; }
+  .empty p { margin: 0; font-size: 14px; }
+
+  /* Editor */
+  #editor { position: fixed; inset: 0; z-index: 10; display: none; flex-direction: column; background: var(--bg); }
+  #editor.open { display: flex; animation: edIn 200ms var(--ease-out); }
+  @keyframes edIn { from { opacity: 0; transform: scale(.99); } }
+  .ed-top { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 14px; background: var(--bar);
+    border-bottom: .5px solid var(--sep); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
+  .ed-top input { flex: 1; max-width: 520px; margin: 0 auto; text-align: center; background: transparent; border: 0;
+    border-radius: 8px; padding: 6px 10px; font: 600 15px var(--font-display); transition: background-color 150ms ease; }
+  .ed-top input:hover { background: var(--fill); }
+  .ed-top input:focus { background: var(--surface); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 45%, transparent); }
+  .ed-side { display: flex; gap: 4px; min-width: 180px; }
+  .ed-side.r { justify-content: flex-end; }
+  .stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; cursor: pointer; }
+  .stage video { max-width: 100%; max-height: 100%; }
+
+  /* Zeitleiste im Stil von Clipchamp: Werkzeuge, Transport, Lineal, Spur mit Teilen, Zoom */
+  .timeline { background: var(--surface); border-top: .5px solid var(--sep); user-select: none; }
+  .tl-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 8px 12px; }
+  .tl-bar .grp { display: flex; align-items: center; gap: 2px; }
+  .tl-bar .grp.r { justify-content: flex-end; gap: 6px; }
+  .tl-bar button.icon { width: 32px; height: 32px; border-radius: 8px; color: var(--label); }
+  .tl-bar button.icon:disabled { color: var(--label3); }
+  .tl-bar button.icon .n { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -45%);
+    font: 700 8px/1 var(--font); pointer-events: none; }
+  .tl-bar button.icon { position: relative; }
+  #playBtn { width: 36px; height: 36px; margin: 0 6px; border-radius: 50%; background: var(--label); color: var(--surface); }
+  #playBtn svg { width: 16px; height: 16px; }
+  .clock { font: 600 13px var(--font); font-variant-numeric: tabular-nums; min-width: 120px; padding-left: 4px; }
+  .clock span { color: var(--label2); font-weight: 500; }
+  .sep { width: .5px; height: 20px; background: var(--sep); margin: 0 6px; }
+  .tl-scroll { position: relative; overflow-x: auto; overflow-y: hidden; padding: 0 0 10px; cursor: text; }
+  .tl-scroll::-webkit-scrollbar { height: 8px; }
+  .tl-scroll::-webkit-scrollbar-thumb { background: var(--fill-hover); border-radius: 4px; }
+  .tl-content { position: relative; height: 112px; }
+  .ruler { position: absolute; left: 0; right: 0; top: 0; height: 24px; color: var(--label2);
+    font: 500 10.5px var(--font); font-variant-numeric: tabular-nums; }
+  .ruler i { position: absolute; top: 10px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: var(--label3); }
+  .ruler b { position: absolute; top: 5px; transform: translateX(-50%); font-weight: 500; }
+  .lane { position: absolute; left: 0; right: 0; top: 34px; height: 64px; }
+  .seg { position: absolute; top: 0; bottom: 0; border-radius: 8px; overflow: hidden; background: #111; cursor: pointer;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+  .seg .frames { position: absolute; inset: 0; display: flex; pointer-events: none; }
+  .seg .frames div { flex: 1; background-repeat: no-repeat; }
+  .seg.sel { box-shadow: inset 0 0 0 2px #fff; overflow: visible; z-index: 2; }
+  .seg .grip { position: absolute; top: 0; bottom: 0; width: 12px; display: none; align-items: center; justify-content: center;
+    background: #fff; cursor: ew-resize; z-index: 1; }
+  .seg .grip::after { content: ""; width: 2px; height: 20px; border-radius: 1px; background: rgba(0,0,0,.45); }
+  .seg .grip.l { left: 0; border-radius: 8px 0 0 8px; }
+  .seg .grip.r { right: 0; border-radius: 0 8px 8px 0; }
+  .seg.sel .grip { display: flex; }
+  .seg .len { position: absolute; left: 8px; top: 6px; padding: 1px 6px; border-radius: 5px; background: rgba(0,0,0,.55);
+    color: #fff; font: 600 10.5px var(--font); font-variant-numeric: tabular-nums; pointer-events: none; }
+  .seg.sel .len { left: 18px; }
+  .phead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--label); z-index: 5;
+    pointer-events: none; }
+  .phead::before { content: ""; position: absolute; top: 0; left: 50%; width: 14px; height: 18px; margin-left: -7px;
+    background: var(--label); border-radius: 5px 5px 7px 7px; pointer-events: auto; cursor: grab; }
+  .tl-hint { padding: 0 14px 10px; color: var(--label2); font-size: 11.5px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .tl-hint span { display: flex; align-items: center; gap: 5px; }
+
+  /* Sheets (Einstellungen, Rückfragen) */
+  dialog { background: var(--surface2); color: var(--label); border: 0; border-radius: 14px; padding: 0;
+    width: min(480px, 92vw); box-shadow: 0 0 0 .5px var(--sep), 0 24px 64px rgba(0,0,0,.35); }
+  dialog[open] { animation: sheetIn 220ms var(--ease-out); }
+  @keyframes sheetIn { from { opacity: 0; transform: scale(.96); } }
+  dialog::backdrop { background: rgba(0,0,0,.35); animation: fadeIn 200ms ease-out; }
+  @keyframes fadeIn { from { opacity: 0; } }
+  dialog form { padding: 20px; }
+  dialog h2 { margin: 2px 4px 14px; font: 700 20px var(--font-display); letter-spacing: -.02em; }
+  .group { background: var(--surface); border-radius: 10px; overflow: hidden; }
+  .group + .group { margin-top: 18px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    min-height: 44px; padding: 6px 12px 6px 14px; position: relative; }
+  .row label small { display: block; color: var(--label2); font-size: 11.5px; max-width: 230px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row + .row::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; border-top: .5px solid var(--sep); }
+  .row select, .row input[type=text] { background: var(--fill); border: 0; border-radius: 7px; padding: 5px 10px; min-width: 150px; }
+  .row select { appearance: none; padding-right: 28px; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='14' fill='none' stroke='%238e8e93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 5l3-3 3 3M2 9l3 3 3-3'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 9px center; }
+  .row select option { background: var(--surface); color: var(--label); }
+  .row input.path { min-width: 0; flex: 1; max-width: 270px; text-align: right; font-size: 13px; color: var(--label2); }
+  .row input.path:focus { color: var(--label); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 45%, transparent); }
+  /* iOS-Schalter */
+  input.switch { appearance: none; position: relative; width: 42px; height: 25px; margin: 0; border-radius: 999px;
+    background: var(--fill-hover); cursor: pointer; transition: background-color 200ms ease; }
+  input.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 21px; height: 21px; border-radius: 50%;
+    background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2), 0 0 0 .5px rgba(0,0,0,.04);
+    transition: transform 220ms var(--ease-out); }
+  input.switch:checked { background: var(--green); }
+  input.switch:checked::after { transform: translateX(17px); }
+  #hotkeyBtn { padding: 5px 12px; border-radius: 7px; min-width: 90px; }
+  #hotkeyBtn.listening { background: color-mix(in srgb, var(--blue) 18%, transparent); color: var(--blue); }
+  .dlg-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  #ask { width: min(300px, 88vw); text-align: center; }
+  #ask form { padding: 22px 18px 16px; }
+  #ask .glyph { width: 46px; height: 46px; margin: 0 auto 12px; border-radius: 12px; display: grid; place-items: center;
+    background: linear-gradient(160deg, #ff6b5f, #e0261b); color: #fff; }
+  #ask h3 { margin: 0 0 4px; font: 600 15px var(--font-display); }
+  #ask p { margin: 0 0 18px; color: var(--label2); font-size: 12.5px; }
+  #ask .dlg-actions { margin: 0; }
+  #ask .dlg-actions button { flex: 1; }
+
+  /* HUD */
+  #toast { position: fixed; bottom: 28px; left: 50%; z-index: 50; display: flex; align-items: center; gap: 8px;
+    padding: 9px 18px; border-radius: 980px; background: var(--hud); font-weight: 500; font-size: 13px;
+    box-shadow: 0 0 0 .5px var(--sep), 0 10px 30px rgba(0,0,0,.25); pointer-events: none;
+    backdrop-filter: saturate(180%) blur(24px); -webkit-backdrop-filter: saturate(180%) blur(24px);
+    opacity: 0; transform: translate(-50%, 12px) scale(.96);
+    transition: opacity 200ms ease-out, transform 250ms var(--ease-out); }
+  #toast::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  #toast.err::before { background: var(--red); }
+  #toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  .busy { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; }
+  .busy.show { display: flex; }
+  .busy .box { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 150px; padding: 26px 22px 20px;
+    border-radius: 18px; background: var(--hud); font-weight: 500; font-size: 13px; color: var(--label);
+    box-shadow: 0 0 0 .5px var(--sep), 0 20px 50px rgba(0,0,0,.3); animation: sheetIn 200ms var(--ease-out);
+    backdrop-filter: saturate(180%) blur(24px); -webkit-backdrop-filter: saturate(180%) blur(24px); }
+  .spin { width: 26px; height: 26px; border: 2.5px solid var(--fill-hover); border-top-color: var(--label2);
+    border-radius: 50%; animation: spin 700ms linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 1ms !important; transition-property: opacity, background-color !important; }
+    .spin { animation-duration: 1.4s !important; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <!-- gleiche Form wie logo.py -->
+  <linearGradient id="logoGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7a45"/><stop offset="1" stop-color="#e91e63"/></linearGradient>
+  <symbol id="logo" viewBox="0 0 1024 1024">
+    <rect width="1024" height="1024" rx="230" fill="url(#logoGrad)"/>
+    <path d="M512 262A250 250 0 1 1 335.2 335.2" fill="none" stroke="#fff" stroke-width="74"/>
+    <path d="M400 262L520 170V354z" fill="#fff"/>
+    <path d="M470 418V606L622 512z" fill="#fff"/>
+  </symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.6l2 2.2h7.4A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h0a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v0a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></symbol>
+  <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6.5" r="2.8"/><circle cx="6" cy="17.5" r="2.8"/><path d="M8.3 8.2L20 18.5M8.3 15.8L20 5.5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-tostart" viewBox="0 0 24 24"><path d="M6 5v14M18 5.5l-9 6.5 9 6.5z"/></symbol>
+  <symbol id="i-rew" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4.5 9M4.5 4.5V9H9"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3L19.5 9M19.5 4.5V9H15"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+  <symbol id="i-zoomin" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8M10.5 7.5v6M7.5 10.5h6"/></symbol>
+  <symbol id="i-zoomout" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8M7.5 10.5h6"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24"><path d="M3 6v12M21 6v12M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.8c0-.4.4-.8.8-.8h3.4c.4 0 .8.4.8.8V7M6.5 7l.8 11.6a2 2 0 0 0 2 1.9h5.4a2 2 0 0 0 2-1.9L17.5 7M10 11v5.5M14 11v5.5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M7 5v14M17 5v14M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4"/></symbol>
+</svg>
+
+<header>
+  <div class="logo"><svg><use href="#logo"/></svg>Clipper</div>
+  <div class="pill" id="pill"><b></b><span id="pillText">Verbinde …</span></div>
+  <div class="spacer"></div>
+  <button class="icon" id="folderBtn" title="Clip-Ordner öffnen"><svg class="i"><use href="#i-folder"/></svg></button>
+  <button class="icon" id="settingsBtn" title="Einstellungen"><svg class="i"><use href="#i-gear"/></svg></button>
+  <button class="record" id="clipBtn"><b></b>Clip aufnehmen</button>
+</header>
+
+<main>
+  <div class="alert" id="alert"></div>
+  <div class="bar"><h1>Clips</h1><span id="count"></span></div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>
+    <div class="glyph"><svg class="i"><use href="#i-film"/></svg></div>
+    <h2>Noch keine Clips</h2>
+    <p>Drück <kbd id="emptyKey">Alt+R</kbd> und Clipper speichert die letzten <span id="emptySec">30</span> Sekunden.</p>
+  </div>
+</main>
+
+<section id="editor">
+  <div class="ed-top">
+    <div class="ed-side"><button class="plain" id="backBtn"><svg class="i"><use href="#i-back"/></svg>Clips</button></div>
+    <input id="nameInput" spellcheck="false" title="Zum Umbenennen klicken, Enter speichert">
+    <div class="ed-side r">
+      <button id="copyBtn" title="Clip in die Zwischenablage, dann mit Strg+V einfügen"><svg class="i"><use href="#i-copy"/></svg>Kopieren</button>
+      <button id="copySmallBtn" title="Verkleinert auf unter 10 MB und kopiert">Für Discord</button>
+      <button class="icon" id="revealBtn" title="Im Ordner zeigen"><svg class="i"><use href="#i-folder"/></svg></button>
+      <button class="icon danger-text" id="deleteBtn" title="Löschen"><svg class="i"><use href="#i-trash"/></svg></button>
+    </div>
+  </div>
+  <div class="stage" id="stage"><video id="video" preload="auto"></video></div>
+  <div class="timeline">
+    <div class="tl-bar">
+      <div class="grp">
+        <button class="icon" id="splitBtn" title="Am Abspielkopf teilen (S)"><svg class="i"><use href="#i-scissors"/></svg></button>
+        <button class="icon" id="cutBtn" title="Markierten Teil entfernen (Entf)" disabled><svg class="i"><use href="#i-trash"/></svg></button>
+        <button class="icon" id="undoBtn" title="Rückgängig (Strg+Z)" disabled><svg class="i"><use href="#i-undo"/></svg></button>
+      </div>
+      <div class="grp">
+        <button class="icon" id="toStartBtn" title="Zum Anfang (Pos1)"><svg class="i"><use href="#i-tostart"/></svg></button>
+        <button class="icon" id="back5Btn" title="5 Sekunden zurück (J)"><svg class="i"><use href="#i-rew"/></svg><span class="n">5</span></button>
+        <button class="icon" id="playBtn" title="Abspielen/Pause (Leertaste)"><svg class="i"><use href="#i-play" id="playIcon"/></svg></button>
+        <button class="icon" id="fwd5Btn" title="5 Sekunden vor (L)"><svg class="i"><use href="#i-fwd"/></svg><span class="n">5</span></button>
+        <div class="clock" id="clock">0:00.00 <span>/ 0:00.00</span></div>
+      </div>
+      <div class="grp r">
+        <button class="icon" id="zoomOutBtn" title="Verkleinern (Strg+Mausrad)"><svg class="i"><use href="#i-zoomout"/></svg></button>
+        <button class="icon" id="zoomInBtn" title="Vergrößern (Strg+Mausrad)"><svg class="i"><use href="#i-zoomin"/></svg></button>
+        <button class="icon" id="fitBtn" title="Ganze Zeitleiste zeigen"><svg class="i"><use href="#i-fit"/></svg></button>
+        <div class="sep"></div>
+        <button class="primary" id="saveNewBtn" title="Die übrigen Teile als neuen Clip sichern, das Original bleibt" disabled><svg class="i"><use href="#i-save"/></svg>Als neuen Clip sichern</button>
+      </div>
+    </div>
+    <div class="tl-scroll" id="tlScroll">
+      <div class="tl-content" id="tlContent">
+        <div class="ruler" id="ruler"></div>
+        <div class="lane" id="lane"></div>
+        <div class="phead" id="phead"></div>
+      </div>
+    </div>
+    <div class="tl-hint">
+      <span><kbd>S</kbd> teilen</span><span><kbd>Entf</kbd> Teil entfernen</span><span><kbd>Leertaste</kbd> Play/Pause</span>
+      <span><kbd>←</kbd><kbd>→</kbd> Bild für Bild</span><span><kbd>Strg</kbd>+<kbd>Z</kbd> rückgängig</span><span>Ränder des markierten Teils ziehen zum Kürzen</span>
+    </div>
+  </div>
+</section>
+
+<dialog id="settings">
+  <form method="dialog" id="settingsForm">
+    <h2>Einstellungen</h2>
+    <div class="group">
+      <div class="row"><label>Erscheinungsbild</label>
+        <div class="segmented" id="themeSeg">
+          <label><input type="radio" name="theme" value="auto"><span>Automatisch</span></label>
+          <label><input type="radio" name="theme" value="light"><span>Hell</span></label>
+          <label><input type="radio" name="theme" value="dark"><span>Dunkel</span></label>
+        </div></div>
+    </div>
+    <div class="group">
+      <div class="row"><label>Tastenkürzel</label><button type="button" id="hotkeyBtn">Alt+R</button></div>
+      <div class="row"><label>Clip-Länge</label>
+        <select name="clip_seconds">
+          <option value="15">15 Sekunden</option><option value="30">30 Sekunden</option>
+          <option value="60">1 Minute</option><option value="120">2 Minuten</option><option value="300">5 Minuten</option>
+        </select></div>
+      <div class="row"><label>Bildrate</label>
+        <select name="fps"><option value="60">60 fps</option><option value="30">30 fps</option></select></div>
+      <div class="row"><label>Qualität</label>
+        <select name="quality"><option value="hoch">Hoch</option><option value="mittel">Mittel</option><option value="niedrig">Niedrig</option></select></div>
+    </div>
+    <div class="group">
+      <div class="row"><label>PC-Ton aufnehmen<small id="devPc"></small></label><input type="checkbox" class="switch" name="audio"></div>
+      <div class="row"><label>Mikrofon aufnehmen<small id="devMic"></small></label><input type="checkbox" class="switch" name="mic"></div>
+      <div class="row"><label>Mikrofon-Lautstärke</label>
+        <select name="mic_volume"><option value="50">50 %</option><option value="75">75 %</option><option value="100">100 %</option>
+          <option value="150">150 %</option><option value="200">200 %</option></select></div>
+      <div class="row"><label>Ton beim Speichern</label><input type="checkbox" class="switch" name="sound"></div>
+      <div class="row"><label>Mit Windows starten</label><input type="checkbox" class="switch" name="autostart"></div>
+      <div class="row"><label>Clip-Ordner</label><input type="text" class="path" name="clip_dir" spellcheck="false"></div>
+    </div>
+    <div class="dlg-actions">
+      <button type="button" class="plain danger-text" id="quitBtn">Clipper beenden</button>
+      <div class="spacer"></div>
+      <button value="cancel" formnovalidate>Abbrechen</button>
+      <button class="primary" id="saveSettings" value="save">Sichern</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="ask">
+  <form method="dialog">
+    <div class="glyph"><svg class="i"><use href="#i-trash"/></svg></div>
+    <h3 id="askTitle"></h3>
+    <p id="askText"></p>
+    <div class="dlg-actions">
+      <button value="cancel">Abbrechen</button>
+      <button class="record" value="ok" id="askOk"></button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+<div class="busy" id="busy"><div class="box"><div class="spin"></div><span id="busyText">Arbeite …</span></div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let clips = [], status = null, libSig = null, lastClipTime = null, current = null;
+let newName = null;
+
+async function api(path, body) {
+  const opts = body === undefined ? {} : {
+    method: 'POST', headers: {'Content-Type': 'application/json', 'X-Clipper': '1'}, body: JSON.stringify(body)
+  };
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function toast(msg, err = false) {
+  const t = $('toast');
+  t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
+  clearTimeout(t._h); t._h = setTimeout(() => t.className = t.className.replace('show', ''), 3200);
+}
+function busy(on, text = 'Arbeite …') { $('busyText').textContent = text; $('busy').classList.toggle('show', on); }
+async function guarded(fn, text) {
+  busy(true, text);
+  try { return await fn(); } catch (e) { toast(e.message, true); } finally { busy(false); }
+}
+// Rückfrage im Apple-Stil statt confirm()
+function ask(title, text, ok) {
+  const d = $('ask');
+  $('askTitle').textContent = title; $('askText').textContent = text; $('askOk').textContent = ok;
+  d.returnValue = '';
+  d.showModal();
+  return new Promise(res => d.addEventListener('close', () => res(d.returnValue === 'ok'), {once: true}));
+}
+
+const fmt = s => { s = Math.max(0, s || 0); const m = Math.floor(s / 60); return `${m}:${(s % 60).toFixed(1).padStart(4, '0')}`; };
+const fmtShort = s => { s = Math.round(s || 0); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const fmtSize = b => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : (b / 1e6).toFixed(0) + ' MB';
+const keyLabel = k => k.split('+').map(p => p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1)).join('+');
+function fmtDate(t) {
+  const d = new Date(t * 1000), now = new Date();
+  const time = d.toLocaleTimeString('de-AT', {hour: '2-digit', minute: '2-digit'});
+  if (d.toDateString() === now.toDateString()) return 'Heute, ' + time;
+  const y = new Date(now); y.setDate(now.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return 'Gestern, ' + time;
+  return d.toLocaleDateString('de-AT', {day: '2-digit', month: '2-digit', year: 'numeric'}) + ', ' + time;
+}
+const enc = n => encodeURIComponent(n);
+
+// --- Bibliothek ---
+async function loadClips(highlight) {
+  clips = await api('/api/clips');
+  const grid = $('grid');
+  grid.innerHTML = '';
+  $('empty').hidden = clips.length > 0;
+  $('count').textContent = clips.length ? `${clips.length} Clip${clips.length > 1 ? 's' : ''}` : '';
+  for (const c of clips) {
+    const el = document.createElement('div');
+    el.className = 'card' + (c.name === highlight ? ' new' : '');
+    el.tabIndex = 0;
+    el.innerHTML = `<div class="thumb"><img loading="lazy" alt=""><div class="scrub"></div>
+      <span class="dur"></span><div class="scrubbar"><i></i></div>
+      <button class="copy" title="In die Zwischenablage, dann mit Strg+V einfügen">Kopieren</button></div>
+      <div class="meta"><div class="name"></div><div class="sub"></div></div>`;
+    el.querySelector('img').src = `/thumb/${enc(c.name)}?v=${c.mtime}`;
+    el.querySelector('.copy').onclick = e => { e.stopPropagation(); copyClip(c.name, false); };
+    attachScrub(el.querySelector('.thumb'), c);
+    el.querySelector('.dur').textContent = fmtShort(c.duration);
+    el.querySelector('.name').textContent = c.name.replace(/\.mp4$/, '');
+    el.querySelector('.sub').textContent = `${fmtDate(c.mtime)} · ${fmtSize(c.size)}`;
+    el.onclick = () => openEditor(c.name);
+    el.onkeydown = e => { if (e.key === 'Enter') openEditor(c.name); };
+    grid.appendChild(el);
+  }
+}
+
+// --- Filmstreifen (20 Bilder nebeneinander, vom Server) ---
+const STRIP_N = 20;
+const strips = new Map();
+function loadStrip(name, mtime) {
+  const url = `/strip/${enc(name)}?v=${mtime}`;
+  if (!strips.has(url)) strips.set(url, new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img); img.onerror = rej; img.src = url;
+  }));
+  return strips.get(url);
+}
+
+// Hover-Scrubbing: Maus über das Vorschaubild bewegen = durch den Clip spulen
+const canHover = matchMedia('(hover: hover) and (pointer: fine)').matches;
+function attachScrub(thumb, c) {
+  if (!canHover) return;
+  const scrub = thumb.querySelector('.scrub'), bar = thumb.querySelector('.scrubbar i');
+  let ready = false, x = 0;
+  const show = () => {
+    const k = Math.min(STRIP_N - 1, Math.floor(x * STRIP_N));
+    scrub.style.backgroundPositionX = (k / (STRIP_N - 1) * 100) + '%';
+    bar.style.width = (x * 100) + '%';
+  };
+  thumb.addEventListener('mouseenter', () => {
+    loadStrip(c.name, c.mtime).then(img => {
+      scrub.style.backgroundImage = `url("${img.src}")`;
+      ready = true;
+      if (thumb.matches(':hover')) { thumb.classList.add('scrubbing'); show(); }
+    }).catch(() => {});
+  });
+  thumb.addEventListener('mousemove', e => {
+    const r = thumb.getBoundingClientRect();
+    x = Math.min(0.999, Math.max(0, (e.clientX - r.left) / r.width));
+    if (ready) { thumb.classList.add('scrubbing'); show(); }
+  });
+  thumb.addEventListener('mouseleave', () => thumb.classList.remove('scrubbing'));
+}
+
+// --- Kopieren ---
+async function copyClip(name, small) {
+  const res = await guarded(() => api('/api/copy', {name, small}), small ? 'Verkleinere für Discord …' : 'Kopiere …');
+  if (!res) return;
+  toast(small ? `Kopiert (${fmtSize(res.size)}) · Strg+V zum Einfügen` : 'Kopiert · Strg+V zum Einfügen');
+}
+
+// --- Status ---
+async function poll() {
+  try {
+    status = await api('/api/status');
+    const s = status.settings;
+    const pill = $('pill');
+    const problems = [status.error && 'Aufnahme: ' + status.error, status.audio_error && 'Ton: ' + status.audio_error,
+                      status.hotkey_error && 'Tastenkürzel: ' + status.hotkey_error].filter(Boolean);
+    if (status.recording) {
+      pill.className = 'pill rec';
+      $('pillText').textContent = `Nimmt auf · ${keyLabel(s.hotkey)} sichert ${s.clip_seconds} s` +
+        (s.audio && s.mic ? ' · PC + Mikro' : s.audio ? ' · nur PC-Ton' : s.mic ? ' · nur Mikro' : ' · ohne Ton');
+    } else {
+      pill.className = 'pill err';
+      $('pillText').textContent = 'Aufnahme startet …';
+    }
+    $('alert').style.display = problems.length ? 'flex' : 'none';
+    $('alert').textContent = problems.join(' — ');
+    if ((s.theme || 'auto') !== themePref && !$('settings').open) saveTheme(s.theme || 'auto');
+    $('emptyKey').textContent = keyLabel(s.hotkey);
+    $('emptySec').textContent = s.clip_seconds;
+    if (status.library !== libSig) {
+      const first = libSig === null;
+      libSig = status.library;
+      const lc = status.last_clip;
+      const fresh = lc && lc.time !== lastClipTime && !first;
+      await loadClips(fresh ? lc.name : null);
+      if (fresh) toast('Clip gesichert: ' + lc.name.replace(/\.mp4$/, ''));
+    }
+    if (status.last_clip) lastClipTime = status.last_clip.time;
+  } catch (e) {
+    $('pill').className = 'pill err';
+    $('pillText').textContent = 'Clipper läuft nicht';
+  }
+}
+
+// --- Editor: Zeitleiste wie in Clipchamp ---
+// segs sind die behaltenen Teile in Quellzeit (Sekunden im Original). Die Zeitleiste zeigt sie lückenlos
+// hintereinander; entfernte Stücke fallen heraus. Gespeichert wird als neuer Clip, das Original bleibt.
+const video = $('video');
+const FPS = 60, PAD = 16, MAX_PPS = 400;
+let segs = [], selSeg = -1, undoStack = [], dur = 0, pps = 40, fitMode = true, stripImg = null;
+let playIdx = 0, raf = 0;
+
+function releaseVideo() { video.pause(); video.removeAttribute('src'); video.load(); }
+
+const total = () => segs.reduce((n, s) => n + s.b - s.a, 0);
+const fmt2 = t => { t = Math.max(0, t || 0); const m = Math.floor(t / 60); return `${m}:${(t % 60).toFixed(2).padStart(5, '0')}`; };
+const xOf = t => PAD + t * pps;
+
+// Quellzeit -> Zeitleiste
+function toEdit(t) {
+  let off = 0;
+  for (const s of segs) {
+    if (t < s.a) return off;
+    if (t <= s.b) return off + t - s.a;
+    off += s.b - s.a;
+  }
+  return off;
+}
+// Zeitleiste -> {Teil, Quellzeit}
+function toSrc(x) {
+  for (let i = 0; i < segs.length; i++) {
+    const len = segs[i].b - segs[i].a;
+    if (x < len || i === segs.length - 1) return {i, t: segs[i].a + Math.min(Math.max(x, 0), len)};
+    x -= len;
+  }
+  return {i: 0, t: 0};
+}
+const editPos = () => toEdit(video.currentTime);
+function seekEdit(x) {
+  if (!segs.length) return;
+  const r = toSrc(Math.min(Math.max(x, 0), total()));
+  playIdx = r.i; video.currentTime = r.t; render();
+}
+
+function pushUndo() { undoStack.push(JSON.stringify(segs)); if (undoStack.length > 100) undoStack.shift(); }
+function undo() {
+  if (!undoStack.length) return;
+  segs = JSON.parse(undoStack.pop()); selSeg = -1;
+  if (fitMode) fit(); else render();
+}
+
+function openEditor(name) {
+  current = name;
+  $('nameInput').value = name.replace(/\.mp4$/, '');
+  video.src = `/media/${enc(name)}?v=${Date.now()}`;
+  segs = []; selSeg = -1; undoStack = []; dur = 0; stripImg = null; fitMode = true;
+  const c = clips.find(c => c.name === name);
+  loadStrip(name, c ? c.mtime : Date.now()).then(img => { if (current === name) { stripImg = img; render(); } }).catch(() => {});
+  $('editor').classList.add('open');
+  render();
+}
+function closeEditor() { cancelAnimationFrame(raf); releaseVideo(); current = null; $('editor').classList.remove('open'); }
+
+video.addEventListener('loadedmetadata', () => {
+  if (dur) return;   // nach Umbenennen nicht zurücksetzen
+  dur = video.duration; segs = [{a: 0, b: dur}];
+  fit();
+});
+video.addEventListener('play', () => { $('playIcon').setAttribute('href', '#i-pause'); raf = requestAnimationFrame(tick); });
+video.addEventListener('pause', () => { $('playIcon').setAttribute('href', '#i-play'); cancelAnimationFrame(raf); render(); });
+video.addEventListener('seeked', () => video.paused && render());
+
+// Beim Abspielen über entfernte Stücke springen
+function tick() {
+  const s = segs[playIdx];
+  if (s && video.currentTime >= s.b - 0.008) {
+    if (playIdx + 1 < segs.length) { playIdx++; video.currentTime = segs[playIdx].a; }
+    else { video.pause(); video.currentTime = s.b; }
+  }
+  render(true);
+  if (!video.paused) raf = requestAnimationFrame(tick);
+}
+function play() {
+  if (!segs.length) return;
+  if (!video.paused) return video.pause();
+  if (editPos() >= total() - 0.02) seekEdit(0);
+  playIdx = toSrc(editPos()).i;
+  const s = segs[playIdx];
+  if (video.currentTime < s.a || video.currentTime >= s.b) video.currentTime = s.a;
+  video.play();
+}
+
+// --- Zeichnen ---
+const STEPS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120];
+function rulerLabel(t, step) {
+  if (t === 0) return '0';
+  const m = Math.floor(t / 60), sec = t - m * 60;
+  const digits = step < 0.5 ? 2 : step < 1 ? 1 : 0;
+  return `${m}:${sec.toFixed(digits).padStart(digits ? digits + 3 : 2, '0')}`;
+}
+let lastLayout = '';
+function render(fromTick) {
+  const T = total(), sc = $('tlScroll');
+  const width = Math.max(sc.clientWidth, PAD * 2 + T * pps);
+  // Lineal und Teile nur neu bauen, wenn sich Teile, Zoom oder Auswahl geändert haben
+  const layout = JSON.stringify([segs, pps, selSeg, width, !!stripImg]);
+  if (layout !== lastLayout) {
+    lastLayout = layout;
+    $('tlContent').style.width = width + 'px';
+    drawRuler(width);
+    drawLane();
+  }
+  const pos = editPos();
+  $('phead').style.left = xOf(pos) + 'px';
+  $('clock').innerHTML = `${fmt2(pos)} <span>/ ${fmt2(T)}</span>`;
+  if (fromTick) {   // beim Abspielen mitscrollen
+    const x = xOf(pos);
+    if (x > sc.scrollLeft + sc.clientWidth - 40 || x < sc.scrollLeft) sc.scrollLeft = x - 40;
+  }
+  $('cutBtn').disabled = selSeg < 0 || segs.length < 2;
+  $('undoBtn').disabled = !undoStack.length;
+  const edited = segs.length > 1 || (segs.length === 1 && (segs[0].a > 0.01 || segs[0].b < dur - 0.01));
+  $('saveNewBtn').disabled = !edited;
+}
+function drawRuler(width) {
+  const r = $('ruler'); r.innerHTML = '';
+  const step = STEPS.find(s => s * pps >= 70) || 120;
+  const end = (width - PAD) / pps;
+  for (let n = 0; n * step / 2 <= end + 1e-6; n++) {
+    const t = n * step / 2, major = n % 2 === 0;
+    const el = document.createElement(major ? 'b' : 'i');
+    if (major) el.textContent = rulerLabel(Math.round(t * 100) / 100, step);
+    el.style.left = xOf(t) + 'px';
+    r.appendChild(el);
+  }
+}
+function drawLane() {
+  const lane = $('lane'); lane.innerHTML = '';
+  const h = 64;
+  const frameW = stripImg ? h * (stripImg.naturalWidth / STRIP_N) / stripImg.naturalHeight : 0;
+  let off = 0;
+  segs.forEach((s, i) => {
+    const len = s.b - s.a, w = Math.max(4, len * pps - 2);
+    const el = document.createElement('div');
+    el.className = 'seg' + (i === selSeg ? ' sel' : '');
+    el.style.left = xOf(off) + 'px'; el.style.width = w + 'px';
+    el.dataset.i = i;
+    const frames = document.createElement('div'); frames.className = 'frames';
+    if (stripImg) {
+      const count = Math.max(1, Math.round(w / frameW)), cellW = w / count;
+      for (let j = 0; j < count; j++) {
+        const t = s.a + (j + 0.5) / count * len;
+        const k = Math.min(STRIP_N - 1, Math.floor(t / dur * STRIP_N));
+        const d = document.createElement('div');
+        d.style.backgroundImage = `url("${stripImg.src}")`;
+        d.style.backgroundSize = `${frameW * STRIP_N}px ${h}px`;
+        d.style.backgroundPosition = `${-(k * frameW + (frameW - cellW) / 2)}px 0`;
+        frames.appendChild(d);
+      }
+    }
+    el.appendChild(frames);
+    if (w > 70) { const l = document.createElement('span'); l.className = 'len'; l.textContent = fmt2(len); el.appendChild(l); }
+    for (const side of ['l', 'r']) {
+      const g = document.createElement('div'); g.className = 'grip ' + side; g.dataset.grip = side; el.appendChild(g);
+    }
+    lane.appendChild(el);
+    off += len;
+  });
+}
+
+// --- Zoom ---
+function setZoom(next, anchorX) {   // anchorX: x im sichtbaren Bereich, das an derselben Stelle bleiben soll
+  const sc = $('tlScroll'), T = total();
+  const minPps = Math.max(1, (sc.clientWidth - PAD * 2) / Math.max(T, 0.1));
+  const ax = anchorX ?? (xOf(editPos()) - sc.scrollLeft);
+  const tAt = (sc.scrollLeft + ax - PAD) / pps;
+  pps = Math.min(MAX_PPS, Math.max(minPps, next));
+  fitMode = pps <= minPps + 0.01;
+  render();
+  sc.scrollLeft = PAD + tAt * pps - ax;
+}
+function fit() {
+  const sc = $('tlScroll');
+  pps = Math.max(1, (sc.clientWidth - PAD * 2) / Math.max(total(), 0.1));
+  fitMode = true; sc.scrollLeft = 0; render();
+}
+$('zoomInBtn').onclick = () => setZoom(pps * 1.6);
+$('zoomOutBtn').onclick = () => setZoom(pps / 1.6);
+$('fitBtn').onclick = fit;
+$('tlScroll').addEventListener('wheel', e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  const r = $('tlScroll').getBoundingClientRect();
+  setZoom(pps * (e.deltaY < 0 ? 1.25 : 0.8), e.clientX - r.left);
+}, {passive: false});
+addEventListener('resize', () => { if (current) fitMode ? fit() : render(); });
+
+// --- Maus: spulen, Teil markieren, Ränder ziehen ---
+let drag = null;
+function editAt(e) {
+  const r = $('tlContent').getBoundingClientRect();
+  return (e.clientX - r.left - PAD) / pps;
+}
+$('tlContent').addEventListener('pointerdown', e => {
+  if (!segs.length || e.button !== 0) return;
+  const grip = e.target.dataset.grip, segEl = e.target.closest('.seg');
+  $('tlContent').setPointerCapture(e.pointerId);
+  video.pause();
+  if (grip && segEl) {
+    const i = +segEl.dataset.i;
+    pushUndo();
+    drag = {type: 'grip', side: grip, i, x0: e.clientX, a0: segs[i].a, b0: segs[i].b};
+    return;
+  }
+  if (segEl) selSeg = +segEl.dataset.i;
+  else if (!e.target.closest('.ruler')) selSeg = -1;
+  drag = {type: 'seek'};
+  seekEdit(editAt(e));
+});
+$('tlContent').addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (drag.type === 'seek') return seekEdit(editAt(e));
+  const s = segs[drag.i], dt = (e.clientX - drag.x0) / pps;
+  if (drag.side === 'l') {
+    const lo = drag.i > 0 ? segs[drag.i - 1].b : 0;
+    s.a = Math.min(Math.max(drag.a0 + dt, lo), s.b - 0.2);
+    video.currentTime = s.a;
+  } else {
+    const hi = drag.i + 1 < segs.length ? segs[drag.i + 1].a : dur;
+    s.b = Math.max(Math.min(drag.b0 + dt, hi), s.a + 0.2);
+    video.currentTime = s.b - 0.001;
+  }
+  render();
+});
+$('tlContent').addEventListener('pointerup', () => {
+  if (drag && drag.type === 'grip') {
+    const s = segs[drag.i];
+    if (s.a === drag.a0 && s.b === drag.b0) undoStack.pop();   // nichts geändert
+    if (fitMode) fit();
+  }
+  drag = null; render();
+});
+
+// --- Teilen, Entfernen ---
+function split() {
+  const t = video.currentTime;
+  const i = segs.findIndex(s => t > s.a + 0.05 && t < s.b - 0.05);
+  if (i < 0) return toast('Hier lässt sich nicht teilen', true);
+  pushUndo();
+  segs.splice(i, 1, {a: segs[i].a, b: t}, {a: t, b: segs[i].b});
+  selSeg = i + 1;
+  render();
+}
+function cut() {
+  if (selSeg < 0 || segs.length < 2) return;
+  pushUndo();
+  const at = toEdit(segs[selSeg].a);
+  segs.splice(selSeg, 1);
+  selSeg = -1;
+  if (fitMode) fit();
+  seekEdit(Math.min(at, total()));
+}
+$('splitBtn').onclick = split;
+$('cutBtn').onclick = cut;
+$('undoBtn').onclick = undo;
+$('playBtn').onclick = play;
+$('stage').onclick = play;
+$('toStartBtn').onclick = () => { video.pause(); seekEdit(0); };
+$('back5Btn').onclick = () => seekEdit(editPos() - 5);
+$('fwd5Btn').onclick = () => seekEdit(editPos() + 5);
+
+document.addEventListener('keydown', e => {
+  if (!current || e.target.tagName === 'INPUT' || document.querySelector('dialog[open]')) return;
+  const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); play(); }
+  else if (k === 's' && !e.ctrlKey) split();
+  else if (k === 'delete' || k === 'backspace') { e.preventDefault(); cut(); }
+  else if (k === 'z' && e.ctrlKey) { e.preventDefault(); undo(); }
+  else if (k === 'arrowleft' || k === 'arrowright') {
+    e.preventDefault(); video.pause();
+    seekEdit(editPos() + (k === 'arrowleft' ? -1 : 1) * (e.shiftKey ? 1 : 1 / FPS));
+  }
+  else if (k === 'j' || k === 'l') seekEdit(editPos() + (k === 'j' ? -5 : 5));
+  else if (k === 'home') { video.pause(); seekEdit(0); }
+  else if (k === 'end') { video.pause(); seekEdit(total()); }
+  else if (k === '+' || k === '=') setZoom(pps * 1.6);
+  else if (k === '-') setZoom(pps / 1.6);
+  else if (k === 'escape') { if (selSeg >= 0) { selSeg = -1; render(); } else closeEditor(); }
+});
+$('backBtn').onclick = closeEditor;
+
+async function saveEdit() {
+  const name = current;
+  video.pause();
+  const res = await guarded(() => api('/api/trim', {name, segments: segs.map(s => [s.a, s.b])}), 'Schneide Clip …');
+  if (!res) return;
+  toast('Neuer Clip gesichert');
+  libSig = null; await poll();
+  openEditor(res.name);
+}
+$('saveNewBtn').onclick = saveEdit;
+
+$('deleteBtn').onclick = async () => {
+  if (!await ask(`„${current.replace(/\.mp4$/, '')}“ löschen?`, 'Der Clip wird in den Papierkorb verschoben.', 'Löschen')) return;
+  const name = current;
+  closeEditor();
+  if (await guarded(() => api('/api/delete', {name}), 'Lösche …')) { toast('Clip gelöscht'); libSig = null; poll(); }
+};
+$('copyBtn').onclick = () => copyClip(current, false);
+$('copySmallBtn').onclick = () => copyClip(current, true);
+$('revealBtn').onclick = () => api('/api/reveal', {name: current}).catch(e => toast(e.message, true));
+
+async function rename() {
+  const val = $('nameInput').value.trim();
+  if (!current || !val || val === current.replace(/\.mp4$/, '')) return;
+  const name = current, t = video.currentTime;
+  releaseVideo();
+  try {
+    const res = await api('/api/rename', {name, new: val});
+    toast('Umbenannt');
+    current = res.name;
+    video.src = `/media/${enc(res.name)}?v=${Date.now()}`;
+    video.addEventListener('loadedmetadata', () => video.currentTime = t, {once: true});
+    libSig = null; poll();
+  } catch (e) {
+    toast(e.message, true);
+    $('nameInput').value = name.replace(/\.mp4$/, '');
+    openEditor(name);
+  }
+}
+$('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+$('nameInput').addEventListener('blur', rename);
+
+// --- Werkzeugleiste ---
+$('clipBtn').onclick = () => guarded(async () => { await api('/api/clip', {}); await poll(); }, 'Sichere Clip …');
+$('folderBtn').onclick = () => api('/api/reveal', {}).catch(e => toast(e.message, true));
+
+// --- Einstellungen ---
+const form = $('settingsForm');
+$('settingsBtn').onclick = () => {
+  const s = status && status.settings; if (!s) return;
+  form.clip_seconds.value = s.clip_seconds; form.fps.value = s.fps; form.quality.value = s.quality;
+  form.audio.checked = s.audio; form.autostart.checked = s.autostart; form.sound.checked = s.sound !== false; form.clip_dir.value = s.clip_dir;
+  form.mic.checked = s.mic; form.mic_volume.value = s.mic_volume;
+  form.theme.value = s.theme || 'auto';
+  const dev = status.audio_devices || {};
+  $('devPc').textContent = dev.pc || ''; $('devMic').textContent = dev.mic || '';
+  newName = s.hotkey; $('hotkeyBtn').textContent = keyLabel(s.hotkey);
+  $('settings').showModal();
+};
+$('hotkeyBtn').onclick = () => { $('hotkeyBtn').classList.add('listening'); $('hotkeyBtn').textContent = 'Tasten drücken …'; };
+$('hotkeyBtn').addEventListener('keydown', e => {
+  if (!$('hotkeyBtn').classList.contains('listening')) return;
+  e.preventDefault(); e.stopPropagation();
+  if (['Control', 'Alt', 'Shift', 'Meta', 'AltGraph'].includes(e.key)) return;
+  const mods = [e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift'].filter(Boolean);
+  if (!mods.length && !/^F\d+$/.test(e.key)) { toast('Bitte mit Strg, Alt oder Umschalt kombinieren', true); return; }
+  const key = e.code.startsWith('Key') ? e.code.slice(3).toLowerCase()
+            : e.code.startsWith('Digit') ? e.code.slice(5) : e.key.toLowerCase();
+  newName = [...mods, key].join('+');
+  $('hotkeyBtn').textContent = keyLabel(newName);
+  $('hotkeyBtn').classList.remove('listening');
+});
+// Erscheinungsbild sofort zeigen, beim Abbrechen zurücknehmen
+$('themeSeg').addEventListener('change', e => applyTheme(e.target.value));
+function saveTheme(pref) {
+  applyTheme(pref);
+  try { localStorage.setItem('theme', pref); } catch (e) {}
+}
+$('settings').addEventListener('close', async () => {
+  $('hotkeyBtn').classList.remove('listening');
+  if ($('settings').returnValue !== 'save') return applyTheme(status.settings.theme || 'auto');
+  saveTheme(form.theme.value);
+  const body = {clip_seconds: +form.clip_seconds.value, fps: +form.fps.value, quality: form.quality.value,
+                theme: form.theme.value, audio: form.audio.checked, mic: form.mic.checked, mic_volume: +form.mic_volume.value, autostart: form.autostart.checked, sound: form.sound.checked, clip_dir: form.clip_dir.value,
+                hotkey: newName};
+  if (await guarded(() => api('/api/settings', body), 'Sichere …')) { toast('Gesichert'); libSig = null; poll(); }
+});
+$('quitBtn').onclick = async () => {
+  $('settings').close('cancel');
+  if (!await ask('Clipper beenden?', 'Danach werden keine Clips mehr aufgenommen.', 'Beenden')) return;
+  await api('/api/quit', {}).catch(() => {});
+  window.close();
+};
+
+poll();
+setInterval(poll, 1500);
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+keyboard
+soundcard
+numpy
+pystray
+pillow
+send2trash
