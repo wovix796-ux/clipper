@@ -15,7 +15,7 @@ HERE = Path(__file__).resolve().parent
 BUILD = Path(os.environ.get("TEMP", HERE)) / "clipper_build"
 TARGET = Path(os.environ["LOCALAPPDATA"]) / "Programs" / "Clipper"
 EXE = TARGET / "Clipper.exe"
-APP_VERSION = (1, 3, 0, 0)
+APP_VERSION = (1, 3, 1, 0)
 
 # Versionsinfo der exe: Windows zeigt FileDescription z. B. im Taskleisten-MenÃ¼ als Programmnamen
 VERSION_INFO = f"""VSVersionInfo(

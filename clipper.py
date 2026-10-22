@@ -61,6 +61,7 @@ DEFAULTS = {
     "mic_volume": 100,    # Prozent
     "hotkey": "alt+r",
     "shot_hotkey": "alt+f1",   # Screenshot (wie bei NVIDIA)
+    "shot_preview": True,      # Vorschau-Popup oben rechts nach einem Screenshot
     "clip_dir": str(Path.home() / "Videos" / "Clips"),
     "autostart": False,
     "sound": True,
@@ -691,14 +692,18 @@ class App:
             out = unique_path(self.library.dir / f"Screenshot {stamp}.png")
             img.save(out)
             self.last_clip = {"name": out.name, "time": time.time()}
-            self.notify(L("Screenshot gespeichert", "Screenshot saved"), out.name, True, "shot")
+            self.notify(L("Screenshot gespeichert", "Screenshot saved"), out.name, True, "shot",
+                        tray=not self.settings.get("shot_preview", True))
+            if self.settings.get("shot_preview", True) and IS_WIN:
+                import overlay   # Popup oben rechts, stiehlt dem Spiel nicht den Fokus
+                overlay.show(out, L("Screenshot gespeichert", "Screenshot saved"), out.name)
             return out
         except Exception as e:
             log.exception("Screenshot fehlgeschlagen")
             self.notify(L("Screenshot fehlgeschlagen", "Screenshot failed"), str(e), False)
             raise
 
-    def notify(self, title, text, ok, sound=None):
+    def notify(self, title, text, ok, sound=None, tray=True):
         if IS_WIN and self.settings.get("sound", True):
             try:
                 import winsound
@@ -706,7 +711,7 @@ class App:
                                    winsound.SND_FILENAME | winsound.SND_ASYNC)
             except Exception:
                 log.exception("Ton konnte nicht abgespielt werden")
-        if self.tray:
+        if self.tray and tray:
             try:   # Windows-Benachrichtigung ohne eigenen Systemton (NIIF_NOSOUND)
                 from pystray._util import win32
                 self.tray._message(win32.NIM_MODIFY, win32.NIF_INFO, szInfo=text,
@@ -731,6 +736,7 @@ class App:
         s["clip_dir"] = (new.get("clip_dir") or s["clip_dir"]).strip()
         s["autostart"] = bool(new.get("autostart", s["autostart"]))
         s["sound"] = bool(new.get("sound", s["sound"]))
+        s["shot_preview"] = bool(new.get("shot_preview", s["shot_preview"]))
         s["theme"] = new["theme"] if new.get("theme") in ("auto", "light", "dark") else s["theme"]
         self.settings = s
         SETTINGS_FILE.write_text(json.dumps(s, indent=2, ensure_ascii=False), "utf-8")

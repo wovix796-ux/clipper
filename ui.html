@@ -389,6 +389,7 @@
     <div class="group">
       <div class="row"><label>Clip-Tastenkürzel</label><button type="button" class="keybtn" id="hotkeyBtn">Alt+R</button></div>
       <div class="row"><label>Screenshot-Tastenkürzel</label><button type="button" class="keybtn" id="shotKeyBtn">Alt+F1</button></div>
+      <div class="row"><label>Vorschau nach Screenshot<small>Popup oben rechts, auch im Spiel</small></label><input type="checkbox" class="switch" name="shot_preview"></div>
       <div class="row"><label>Clip-Länge</label>
         <select name="clip_seconds">
           <option value="15">15 Sekunden</option><option value="30">30 Sekunden</option>
@@ -457,7 +458,8 @@ const EN = {
   'Ränder des markierten Teils ziehen zum Kürzen': 'Drag the edges of the selected part to trim',
   'Erscheinungsbild': 'Appearance', 'Automatisch': 'Automatic', 'Hell': 'Light', 'Dunkel': 'Dark', 'Sprache': 'Language',
   'Tastenkürzel': 'Shortcut', 'Clip-Tastenkürzel': 'Clip shortcut', 'Screenshot-Tastenkürzel': 'Screenshot shortcut',
-  'Gespeichert: ': 'Saved: ', 'Clip-Länge': 'Clip length', '15 Sekunden': '15 seconds', '30 Sekunden': '30 seconds',
+  'Gespeichert: ': 'Saved: ', 'Vorschau nach Screenshot': 'Preview after screenshot',
+  'Popup oben rechts, auch im Spiel': 'Pop-up in the top right, also in games', 'Clip-Länge': 'Clip length', '15 Sekunden': '15 seconds', '30 Sekunden': '30 seconds',
   '1 Minute': '1 minute', '2 Minuten': '2 minutes', '5 Minuten': '5 minutes', 'Bildrate': 'Frame rate',
   'Qualität': 'Quality', 'Hoch': 'High', 'Mittel': 'Medium', 'Niedrig': 'Low',
   'PC-Ton aufnehmen': 'Record PC audio', 'Mikrofon aufnehmen': 'Record microphone', 'Mikrofon-Lautstärke': 'Microphone volume',
@@ -1011,6 +1013,7 @@ $('settingsBtn').onclick = () => {
   form.audio.checked = s.audio; form.autostart.checked = s.autostart; form.sound.checked = s.sound !== false; form.clip_dir.value = s.clip_dir;
   form.mic.checked = s.mic; form.mic_volume.value = s.mic_volume;
   form.theme.value = s.theme || 'auto';
+  form.shot_preview.checked = s.shot_preview !== false;
   const dev = status.audio_devices || {};
   $('devPc').textContent = dev.pc || ''; $('devMic').textContent = dev.mic || '';
   keys.hotkeyBtn = s.hotkey; keys.shotKeyBtn = s.shot_hotkey || 'alt+f1';
@@ -1047,7 +1050,7 @@ $('settings').addEventListener('close', async () => {
   if ($('settings').returnValue !== 'save') return applyTheme(status.settings.theme || 'auto');
   saveTheme(form.theme.value);
   const body = {clip_seconds: +form.clip_seconds.value, fps: +form.fps.value, quality: form.quality.value,
-                theme: form.theme.value, audio: form.audio.checked, mic: form.mic.checked, mic_volume: +form.mic_volume.value, autostart: form.autostart.checked, sound: form.sound.checked, clip_dir: form.clip_dir.value,
+                theme: form.theme.value, shot_preview: form.shot_preview.checked, audio: form.audio.checked, mic: form.mic.checked, mic_volume: +form.mic_volume.value, autostart: form.autostart.checked, sound: form.sound.checked, clip_dir: form.clip_dir.value,
                 hotkey: keys.hotkeyBtn, shot_hotkey: keys.shotKeyBtn};
   if (await guarded(() => api('/api/settings', body), tr('Sichere …'))) { toast(tr('Gesichert')); libSig = null; poll(); }
 });
