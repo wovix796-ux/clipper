@@ -46,6 +46,7 @@ BUFFER_ROOT = Path(tempfile.gettempdir()) / "clipper_buffer"
 SHARE_DIR = DATA_DIR / "teilen"
 SHARE_LIMIT = 9_800_000   # Discord ohne Nitro: 10 MB
 STRIP_FRAMES = 20
+MEDIA = {".mp4": "video/mp4", ".png": "image/png"}   # was in der Bibliothek erscheint
 SEGMENT_SECONDS = 1
 SAMPLE_RATE = 48000
 NO_WINDOW = 0x08000000 if IS_WIN else 0   # ffmpeg-Aufrufe ohne schwarzes Konsolenfenster
@@ -59,6 +60,7 @@ DEFAULTS = {
     "mic": True,          # eigene Stimme (Standard-Mikrofon) dazumischen
     "mic_volume": 100,    # Prozent
     "hotkey": "alt+r",
+    "shot_hotkey": "alt+f1",   # Screenshot (wie bei NVIDIA)
     "clip_dir": str(Path.home() / "Videos" / "Clips"),
     "autostart": False,
     "sound": True,
@@ -430,7 +432,7 @@ class Library:
 
     def path(self, name):
         p = self.dir / Path(name).name   # nur Dateinamen, keine Pfade von außen
-        if p.suffix.lower() != ".mp4" or not p.is_file():
+        if p.suffix.lower() not in MEDIA or not p.is_file():
             raise FileNotFoundError(name)
         return p
 
@@ -445,24 +447,31 @@ class Library:
                 self.durations[key] = 0.0
         return self.durations[key]
 
-    def list(self):
+    def files(self):
         if not self.dir.is_dir():
             return []
-        files = sorted(self.dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+        return [p for p in self.dir.iterdir() if p.suffix.lower() in MEDIA and p.is_file()]
+
+    def list(self):
+        files = sorted(self.files(), key=lambda p: p.stat().st_mtime, reverse=True)
         return [{"name": p.name, "size": p.stat().st_size, "mtime": p.stat().st_mtime,
-                 "duration": self.duration(p)} for p in files]
+                 "kind": "image" if p.suffix.lower() == ".png" else "video",
+                 "duration": 0 if p.suffix.lower() == ".png" else self.duration(p)} for p in files]
 
     def signature(self):
         """Ändert sich, sobald ein Clip dazukommt oder wegfällt — die Oberfläche lädt dann neu."""
-        if not self.dir.is_dir():
-            return "0"
-        files = list(self.dir.glob("*.mp4"))
+        files = self.files()
         return f"{len(files)}-{max((p.stat().st_mtime for p in files), default=0)}"
 
     def thumbnail(self, name):
         p = self.path(name)
         thumb = THUMB_DIR / f"{p.stem}_{int(p.stat().st_mtime)}.jpg"
-        if not thumb.exists():
+        if not thumb.exists() and p.suffix.lower() == ".png":
+            from PIL import Image
+            with Image.open(p) as img:
+                img.thumbnail((480, 480))
+                img.convert("RGB").save(thumb, quality=85)
+        elif not thumb.exists():
             at = min(1.0, self.duration(p) / 2)
             run([self.app.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", str(at),
                  "-i", str(p), "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", str(thumb)])
@@ -483,10 +492,19 @@ class Library:
     def copy(self, name, small):
         """Legt den Clip als Datei in die Zwischenablage (Strg+V in Discord, WhatsApp, Explorer)."""
         p = self.path(name)
-        if small and p.stat().st_size > SHARE_LIMIT:
+        if small and p.suffix.lower() == ".mp4" and p.stat().st_size > SHARE_LIMIT:
             p = self.shrink(p)
         lit = str(p).replace("'", "''")
-        r = run(["powershell", "-NoProfile", "-Command", f"Set-Clipboard -LiteralPath '{lit}'"])
+        if p.suffix.lower() == ".png":   # Bild und Datei: einfügen geht dann in Discord, Paint, Word …
+            ps = ("Add-Type -AssemblyName System.Windows.Forms, System.Drawing; "
+                  f"$img = [System.Drawing.Image]::FromFile('{lit}'); "
+                  "$d = New-Object System.Windows.Forms.DataObject; $d.SetImage($img); "
+                  "$f = New-Object System.Collections.Specialized.StringCollection; "
+                  f"[void]$f.Add('{lit}'); $d.SetFileDropList($f); "
+                  "[System.Windows.Forms.Clipboard]::SetDataObject($d, $true); $img.Dispose()")
+        else:
+            ps = f"Set-Clipboard -LiteralPath '{lit}'"
+        r = run(["powershell", "-NoProfile", "-STA", "-Command", ps])
         if r.returncode != 0:
             raise RuntimeError(L("Zwischenablage: ", "Clipboard: ") + r.stderr.strip()[-200:])
         return p
@@ -557,10 +575,10 @@ class Library:
 
     def rename(self, name, new):
         src = self.path(name)
-        new = re.sub(r'[<>:"/\\|?*]', "", new).strip().removesuffix(".mp4").strip()
+        new = re.sub(r'[<>:"/\\|?*]', "", new).strip().removesuffix(src.suffix).strip()
         if not new:
             raise ValueError(L("Name ist leer.", "Name is empty."))
-        dst = src.with_name(new + ".mp4")
+        dst = src.with_name(new + src.suffix)
         if dst.exists() and dst != src:
             raise ValueError(L("Es gibt schon einen Clip mit diesem Namen.", "A clip with this name already exists."))
         retry(lambda: os.replace(src, dst))
@@ -584,14 +602,15 @@ class Library:
             os.startfile(self.dir)
 
 
-def chime(ok=True):
-    """Leiser, weicher Zwei-Ton (aufsteigend = gespeichert, absteigend = Fehler) als WAV."""
-    path = DATA_DIR / ("chime_ok.wav" if ok else "chime_err.wav")
+def chime(kind="ok"):
+    """Leiser, weicher Ton als WAV: ok = Zwei-Ton aufsteigend, err = absteigend, shot = kurzer Klick."""
+    path = DATA_DIR / f"chime_{kind}.wav"
     if path.exists():
         return path
     import wave
     rate, length = 44100, 0.5
-    notes = [(1046.5, 0.0), (1568.0, 0.075)] if ok else [(659.3, 0.0), (493.9, 0.09)]
+    notes = {"ok": [(1046.5, 0.0), (1568.0, 0.075)], "err": [(659.3, 0.0), (493.9, 0.09)],
+             "shot": [(2093.0, 0.0)]}[kind]
     frames = bytearray()
     for i in range(int(rate * length)):
         t, v = i / rate, 0.0
@@ -617,7 +636,7 @@ class App:
         self.settings = load_settings()
         self.recorder = Recorder(ffmpeg)
         self.library = Library(self)
-        self.hotkey_handle = None
+        self.hotkey_handles = []
         self.hotkey_error = ""
         self.last_clip = None
         self.clip_lock = threading.Lock()
@@ -634,10 +653,14 @@ class App:
             return
         try:
             import keyboard
-            if self.hotkey_handle is not None:
-                keyboard.remove_hotkey(self.hotkey_handle)
-            self.hotkey_handle = keyboard.add_hotkey(
-                self.settings["hotkey"], lambda: threading.Thread(target=self.clip_now, daemon=True).start())
+            for h in self.hotkey_handles:
+                keyboard.remove_hotkey(h)
+            self.hotkey_handles = []
+            for key, action in ((self.settings["hotkey"], self.clip_now),
+                                (self.settings["shot_hotkey"], self.screenshot_now)):
+                if key:
+                    self.hotkey_handles.append(keyboard.add_hotkey(
+                        key, lambda a=action: threading.Thread(target=a, daemon=True).start()))
             self.hotkey_error = ""
         except Exception as e:
             self.hotkey_error = str(e)
@@ -658,11 +681,29 @@ class App:
         finally:
             self.clip_lock.release()
 
-    def notify(self, title, text, ok):
+    def screenshot_now(self):
+        """Speichert den Hauptbildschirm als PNG in den Clip-Ordner."""
+        try:
+            from PIL import ImageGrab
+            img = ImageGrab.grab()   # Hauptbildschirm, wie die Aufnahme
+            self.library.dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+            out = unique_path(self.library.dir / f"Screenshot {stamp}.png")
+            img.save(out)
+            self.last_clip = {"name": out.name, "time": time.time()}
+            self.notify(L("Screenshot gespeichert", "Screenshot saved"), out.name, True, "shot")
+            return out
+        except Exception as e:
+            log.exception("Screenshot fehlgeschlagen")
+            self.notify(L("Screenshot fehlgeschlagen", "Screenshot failed"), str(e), False)
+            raise
+
+    def notify(self, title, text, ok, sound=None):
         if IS_WIN and self.settings.get("sound", True):
             try:
                 import winsound
-                winsound.PlaySound(str(chime(ok)), winsound.SND_FILENAME | winsound.SND_ASYNC)
+                winsound.PlaySound(str(chime(sound or ("ok" if ok else "err"))),
+                                   winsound.SND_FILENAME | winsound.SND_ASYNC)
             except Exception:
                 log.exception("Ton konnte nicht abgespielt werden")
         if self.tray:
@@ -686,6 +727,7 @@ class App:
         s["mic"] = bool(new.get("mic", s["mic"]))
         s["mic_volume"] = max(25, min(300, int(new.get("mic_volume", s["mic_volume"]))))
         s["hotkey"] = (new.get("hotkey") or s["hotkey"]).strip().lower()
+        s["shot_hotkey"] = (new.get("shot_hotkey") or s["shot_hotkey"]).strip().lower()
         s["clip_dir"] = (new.get("clip_dir") or s["clip_dir"]).strip()
         s["autostart"] = bool(new.get("autostart", s["autostart"]))
         s["sound"] = bool(new.get("sound", s["sound"]))
@@ -694,7 +736,7 @@ class App:
         SETTINGS_FILE.write_text(json.dumps(s, indent=2, ensure_ascii=False), "utf-8")
         if any(s[k] != old[k] for k in ("clip_seconds", "fps", "quality", "audio", "mic", "mic_volume")):
             self.recorder.start(s)
-        if s["hotkey"] != old["hotkey"]:
+        if s["hotkey"] != old["hotkey"] or s["shot_hotkey"] != old["shot_hotkey"]:
             self.bind_hotkey()
         if s["autostart"] != old["autostart"]:
             set_autostart(s["autostart"])
@@ -908,7 +950,8 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/clips":
                 return self.send_json(APP.library.list())
             if parts[1] == "media":
-                return self.send_file(APP.library.path(unquote(parts[2])), "video/mp4")
+                p = APP.library.path(unquote(parts[2]))
+                return self.send_file(p, MEDIA[p.suffix.lower()])
             if parts[1] == "thumb":
                 return self.send_file(APP.library.thumbnail(unquote(parts[2])), "image/jpeg")
             if parts[1] == "strip":
@@ -926,6 +969,8 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
             route = urlparse(self.path).path
             lib = APP.library
+            if route == "/api/screenshot":
+                return self.send_json({"name": APP.screenshot_now().name})
             if route == "/api/clip":
                 out = APP.clip_now()
                 return self.send_json({"name": out.name if out else None})
@@ -977,6 +1022,8 @@ def run_tray(app):
         pystray.MenuItem(lambda item: L("Clipper öffnen", "Open Clipper"), lambda: open_window(), default=True),
         pystray.MenuItem(lambda item: L("Clip aufnehmen", "Record clip"),
                          lambda: threading.Thread(target=app.clip_now, daemon=True).start()),
+        pystray.MenuItem(lambda item: L("Screenshot", "Take screenshot"),
+                         lambda: threading.Thread(target=app.screenshot_now, daemon=True).start()),
         pystray.MenuItem(lambda item: L("Beenden", "Quit"), lambda: app.quit()),
     )
     app.tray = pystray.Icon("Clipper", img, L("Clipper — nimmt auf", "Clipper — recording"), menu)
@@ -1013,6 +1060,12 @@ def main():
             open_window()
         return
 
+    if IS_WIN:
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)   # pro Monitor
+        except Exception:
+            pass
     log.info("Clipper startet (Test=%s)", TEST)
     kill_orphans()
     APP = App(ffmpeg, ffprobe)

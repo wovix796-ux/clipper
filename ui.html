@@ -156,7 +156,12 @@
   .ed-side { display: flex; gap: 4px; min-width: 180px; }
   .ed-side.r { justify-content: flex-end; }
   .stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; cursor: pointer; }
-  .stage video { max-width: 100%; max-height: 100%; }
+  .stage video, .stage img { max-width: 100%; max-height: 100%; }
+  .stage img { display: none; }
+  /* Screenshot: nur Bild, keine Zeitleiste */
+  #editor.image video, #editor.image .timeline, #editor.image #copySmallBtn { display: none; }
+  #editor.image .stage { cursor: default; }
+  #editor.image .stage img { display: block; }
 
   /* Zeitleiste im Stil von Clipchamp: Werkzeuge, Transport, Lineal, Spur mit Teilen, Zoom */
   .timeline { background: var(--surface); border-top: .5px solid var(--sep); user-select: none; }
@@ -234,8 +239,8 @@
     transition: transform 220ms var(--ease-out); }
   input.switch:checked { background: var(--green); }
   input.switch:checked::after { transform: translateX(17px); }
-  #hotkeyBtn { padding: 5px 12px; border-radius: 7px; min-width: 90px; }
-  #hotkeyBtn.listening { background: color-mix(in srgb, var(--blue) 18%, transparent); color: var(--blue); }
+  .keybtn { padding: 5px 12px; border-radius: 7px; min-width: 90px; }
+  .keybtn.listening { background: color-mix(in srgb, var(--blue) 18%, transparent); color: var(--blue); }
   .dlg-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 20px; }
   #ask { width: min(300px, 88vw); text-align: center; }
   #ask form { padding: 22px 18px 16px; }
@@ -333,7 +338,7 @@
       <button class="icon danger-text" id="deleteBtn" title="Löschen"><svg class="i"><use href="#i-trash"/></svg></button>
     </div>
   </div>
-  <div class="stage" id="stage"><video id="video" preload="auto"></video></div>
+  <div class="stage" id="stage"><video id="video" preload="auto"></video><img id="photo" alt=""></div>
   <div class="timeline">
     <div class="tl-bar">
       <div class="grp">
@@ -382,7 +387,8 @@
         </div></div>
     </div>
     <div class="group">
-      <div class="row"><label>Tastenkürzel</label><button type="button" id="hotkeyBtn">Alt+R</button></div>
+      <div class="row"><label>Clip-Tastenkürzel</label><button type="button" class="keybtn" id="hotkeyBtn">Alt+R</button></div>
+      <div class="row"><label>Screenshot-Tastenkürzel</label><button type="button" class="keybtn" id="shotKeyBtn">Alt+F1</button></div>
       <div class="row"><label>Clip-Länge</label>
         <select name="clip_seconds">
           <option value="15">15 Sekunden</option><option value="30">30 Sekunden</option>
@@ -450,7 +456,8 @@ const EN = {
   'Leertaste': 'Space', 'Bild für Bild': 'frame by frame', 'Strg': 'Ctrl', 'rückgängig': 'undo',
   'Ränder des markierten Teils ziehen zum Kürzen': 'Drag the edges of the selected part to trim',
   'Erscheinungsbild': 'Appearance', 'Automatisch': 'Automatic', 'Hell': 'Light', 'Dunkel': 'Dark', 'Sprache': 'Language',
-  'Tastenkürzel': 'Shortcut', 'Clip-Länge': 'Clip length', '15 Sekunden': '15 seconds', '30 Sekunden': '30 seconds',
+  'Tastenkürzel': 'Shortcut', 'Clip-Tastenkürzel': 'Clip shortcut', 'Screenshot-Tastenkürzel': 'Screenshot shortcut',
+  'Gespeichert: ': 'Saved: ', 'Clip-Länge': 'Clip length', '15 Sekunden': '15 seconds', '30 Sekunden': '30 seconds',
   '1 Minute': '1 minute', '2 Minuten': '2 minutes', '5 Minuten': '5 minutes', 'Bildrate': 'Frame rate',
   'Qualität': 'Quality', 'Hoch': 'High', 'Mittel': 'Medium', 'Niedrig': 'Low',
   'PC-Ton aufnehmen': 'Record PC audio', 'Mikrofon aufnehmen': 'Record microphone', 'Mikrofon-Lautstärke': 'Microphone volume',
@@ -496,7 +503,6 @@ function translatePage() {
 }
 
 let clips = [], status = null, libSig = null, lastClipTime = null, current = null;
-let newName = null;
 
 async function api(path, body) {
   const opts = body === undefined ? {} : {
@@ -559,9 +565,12 @@ async function loadClips(highlight) {
       <div class="meta"><div class="name"></div><div class="sub"></div></div>`;
     el.querySelector('img').src = `/thumb/${enc(c.name)}?v=${c.mtime}`;
     el.querySelector('.copy').onclick = e => { e.stopPropagation(); copyClip(c.name, false); };
-    attachScrub(el.querySelector('.thumb'), c);
-    el.querySelector('.dur').textContent = fmtShort(c.duration);
-    el.querySelector('.name').textContent = c.name.replace(/\.mp4$/, '');
+    if (c.kind === 'image') el.querySelector('.dur').remove();
+    else {
+      attachScrub(el.querySelector('.thumb'), c);
+      el.querySelector('.dur').textContent = fmtShort(c.duration);
+    }
+    el.querySelector('.name').textContent = c.name.replace(/\.(mp4|png)$/i, '');
     el.querySelector('.sub').textContent = `${fmtDate(c.mtime)} · ${fmtSize(c.size)}`;
     el.onclick = () => openEditor(c.name);
     el.onkeydown = e => { if (e.key === 'Enter') openEditor(c.name); };
@@ -641,7 +650,7 @@ async function poll() {
       const lc = status.last_clip;
       const fresh = lc && lc.time !== lastClipTime && !first;
       await loadClips(fresh ? lc.name : null);
-      if (fresh) toast(tr('Clip gesichert: ') + lc.name.replace(/\.mp4$/, ''));
+      if (fresh) toast(tr('Gespeichert: ') + lc.name.replace(/\.(mp4|png)$/i, ''));
     }
     if (status.last_clip) lastClipTime = status.last_clip.time;
   } catch (e) {
@@ -699,7 +708,16 @@ function undo() {
 
 function openEditor(name) {
   current = name;
-  $('nameInput').value = name.replace(/\.mp4$/, '');
+  $('nameInput').value = name.replace(/\.(mp4|png)$/i, '');
+  const isImage = /\.png$/i.test(name);
+  $('editor').classList.toggle('image', isImage);
+  if (isImage) {   // Screenshot: nur anzeigen, umbenennen, kopieren, löschen
+    releaseVideo();
+    $('photo').src = `/media/${enc(name)}?v=${Date.now()}`;
+    $('editor').classList.add('open');
+    return;
+  }
+  $('photo').removeAttribute('src');
   video.src = `/media/${enc(name)}?v=${Date.now()}`;
   segs = []; selSeg = -1; undoStack = []; dur = 0; stripImg = null; fitMode = true;
   const c = clips.find(c => c.name === name);
@@ -919,6 +937,7 @@ $('fwd5Btn').onclick = () => seekEdit(editPos() + 5);
 
 document.addEventListener('keydown', e => {
   if (!current || e.target.tagName === 'INPUT' || document.querySelector('dialog[open]')) return;
+  if ($('editor').classList.contains('image')) { if (e.key === 'Escape') closeEditor(); return; }
   const k = e.key.toLowerCase();
   if (k === ' ') { e.preventDefault(); play(); }
   else if (k === 's' && !e.ctrlKey) split();
@@ -949,7 +968,7 @@ async function saveEdit() {
 $('saveNewBtn').onclick = saveEdit;
 
 $('deleteBtn').onclick = async () => {
-  if (!await ask(tr('„{name}“ löschen?', {name: current.replace(/\.mp4$/, '')}), tr('Der Clip wird in den Papierkorb verschoben.'), tr('Löschen'))) return;
+  if (!await ask(tr('„{name}“ löschen?', {name: current.replace(/\.(mp4|png)$/i, '')}), tr('Der Clip wird in den Papierkorb verschoben.'), tr('Löschen'))) return;
   const name = current;
   closeEditor();
   if (await guarded(() => api('/api/delete', {name}), tr('Lösche …'))) { toast(tr('Clip gelöscht')); libSig = null; poll(); }
@@ -960,19 +979,20 @@ $('revealBtn').onclick = () => api('/api/reveal', {name: current}).catch(e => to
 
 async function rename() {
   const val = $('nameInput').value.trim();
-  if (!current || !val || val === current.replace(/\.mp4$/, '')) return;
-  const name = current, t = video.currentTime;
+  if (!current || !val || val === current.replace(/\.(mp4|png)$/i, '')) return;
+  const name = current, t = video.currentTime, isImage = /\.png$/i.test(name);
   releaseVideo();
   try {
     const res = await api('/api/rename', {name, new: val});
     toast(tr('Umbenannt'));
     current = res.name;
+    if (isImage) { $('photo').src = `/media/${enc(res.name)}?v=${Date.now()}`; libSig = null; poll(); return; }
     video.src = `/media/${enc(res.name)}?v=${Date.now()}`;
     video.addEventListener('loadedmetadata', () => video.currentTime = t, {once: true});
     libSig = null; poll();
   } catch (e) {
     toast(e.message, true);
-    $('nameInput').value = name.replace(/\.mp4$/, '');
+    $('nameInput').value = name.replace(/\.(mp4|png)$/i, '');
     openEditor(name);
   }
 }
@@ -993,22 +1013,29 @@ $('settingsBtn').onclick = () => {
   form.theme.value = s.theme || 'auto';
   const dev = status.audio_devices || {};
   $('devPc').textContent = dev.pc || ''; $('devMic').textContent = dev.mic || '';
-  newName = s.hotkey; $('hotkeyBtn').textContent = keyLabel(s.hotkey);
+  keys.hotkeyBtn = s.hotkey; keys.shotKeyBtn = s.shot_hotkey || 'alt+f1';
+  for (const id in keys) $(id).textContent = keyLabel(keys[id]);
   $('settings').showModal();
 };
-$('hotkeyBtn').onclick = () => { $('hotkeyBtn').classList.add('listening'); $('hotkeyBtn').textContent = tr('Tasten drücken …'); };
-$('hotkeyBtn').addEventListener('keydown', e => {
-  if (!$('hotkeyBtn').classList.contains('listening')) return;
-  e.preventDefault(); e.stopPropagation();
-  if (['Control', 'Alt', 'Shift', 'Meta', 'AltGraph'].includes(e.key)) return;
-  const mods = [e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift'].filter(Boolean);
-  if (!mods.length && !/^F\d+$/.test(e.key)) { toast(tr('Bitte mit Strg, Alt oder Umschalt kombinieren'), true); return; }
-  const key = e.code.startsWith('Key') ? e.code.slice(3).toLowerCase()
-            : e.code.startsWith('Digit') ? e.code.slice(5) : e.key.toLowerCase();
-  newName = [...mods, key].join('+');
-  $('hotkeyBtn').textContent = keyLabel(newName);
-  $('hotkeyBtn').classList.remove('listening');
-});
+// Tastenkürzel aufnehmen: Knopf klicken, dann die Kombination drücken
+const keys = {hotkeyBtn: '', shotKeyBtn: ''};
+for (const id in keys) {
+  const btn = $(id);
+  btn.onclick = () => { btn.classList.add('listening'); btn.textContent = tr('Tasten drücken …'); };
+  btn.addEventListener('blur', () => { btn.classList.remove('listening'); btn.textContent = keyLabel(keys[id]); });
+  btn.addEventListener('keydown', e => {
+    if (!btn.classList.contains('listening')) return;
+    e.preventDefault(); e.stopPropagation();
+    if (['Control', 'Alt', 'Shift', 'Meta', 'AltGraph'].includes(e.key)) return;
+    const mods = [e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift'].filter(Boolean);
+    if (!mods.length && !/^F\d+$/.test(e.key)) { toast(tr('Bitte mit Strg, Alt oder Umschalt kombinieren'), true); return; }
+    const key = e.code.startsWith('Key') ? e.code.slice(3).toLowerCase()
+              : e.code.startsWith('Digit') ? e.code.slice(5) : e.key.toLowerCase();
+    keys[id] = [...mods, key].join('+');
+    btn.textContent = keyLabel(keys[id]);
+    btn.classList.remove('listening');
+  });
+}
 // Erscheinungsbild sofort zeigen, beim Abbrechen zurücknehmen
 $('themeSeg').addEventListener('change', e => applyTheme(e.target.value));
 function saveTheme(pref) {
@@ -1016,12 +1043,12 @@ function saveTheme(pref) {
   try { localStorage.setItem('theme', pref); } catch (e) {}
 }
 $('settings').addEventListener('close', async () => {
-  $('hotkeyBtn').classList.remove('listening');
+  for (const id in keys) $(id).classList.remove('listening');
   if ($('settings').returnValue !== 'save') return applyTheme(status.settings.theme || 'auto');
   saveTheme(form.theme.value);
   const body = {clip_seconds: +form.clip_seconds.value, fps: +form.fps.value, quality: form.quality.value,
                 theme: form.theme.value, audio: form.audio.checked, mic: form.mic.checked, mic_volume: +form.mic_volume.value, autostart: form.autostart.checked, sound: form.sound.checked, clip_dir: form.clip_dir.value,
-                hotkey: newName};
+                hotkey: keys.hotkeyBtn, shot_hotkey: keys.shotKeyBtn};
   if (await guarded(() => api('/api/settings', body), tr('Sichere …'))) { toast(tr('Gesichert')); libSig = null; poll(); }
 });
 $('quitBtn').onclick = async () => {
