@@ -16,7 +16,7 @@ No Nitro, no account, no cloud.</p>
 ## What Clipper does
 
 - **Replay buffer:** Clipper records in the background all the time. Press **Alt+R** to save the last 15 seconds to 5 minutes as a clip. Saving is instant because nothing gets re-encoded.
-- **Screenshots too:** press **Alt+F1** to save a full-resolution screenshot. A small preview pops up in the top right, even in games, without taking focus away from the game and without showing up in your clips. Screenshots appear next to your clips, and "Copy" puts the image on the clipboard so you can paste it anywhere.
+- **Screenshots too:** press **Alt+F1** to save a full-resolution screenshot. A small preview pops up in the top right, even in games, without taking focus away from the game and without showing up in your clips. Click the preview to open the screenshot in Clipper. Screenshots appear next to your clips, and "Copy" puts the image on the clipboard so you can paste it anywhere.
 - **Both sides of the call:** desktop audio (game, friends on Discord, music) and your microphone are mixed together. You can turn each one off and adjust the mic volume.
 - **Library:** all your clips as thumbnails. Hover over one and it scrubs through the clip.
 - **Editor like Clipchamp:** a timeline with ruler and filmstrip. Split with the scissors (`S`), remove parts with `Del`, drag the edges to trim, zoom, undo. The result is saved frame-accurately as a new clip, and the original stays.

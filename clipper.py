@@ -696,7 +696,8 @@ class App:
                         tray=not self.settings.get("shot_preview", True))
             if self.settings.get("shot_preview", True) and IS_WIN:
                 import overlay   # Popup oben rechts, stiehlt dem Spiel nicht den Fokus
-                overlay.show(out, L("Screenshot gespeichert", "Screenshot saved"), out.name)
+                overlay.show(out, L("Screenshot gespeichert", "Screenshot saved"), out.name,
+                             on_click=lambda: open_in_app(out.name), hint=L("Öffnen ›", "Open ›"))
             return out
         except Exception as e:
             log.exception("Screenshot fehlgeschlagen")
@@ -854,6 +855,36 @@ def run_window(app, hidden):
     WINDOW.events.shown += on_shown
     webview.start(private_mode=False, storage_path=str(DATA_DIR / "webview"))
     app.quit()
+
+
+def open_in_app(name):
+    """Zeigt das Clipper-Fenster und öffnet darin einen Clip oder Screenshot (Klick aufs Popup)."""
+    open_window()
+    if WINDOW is None:
+        return
+    try:
+        handle = WINDOW_HWND
+        if not handle:   # Fenster war beim Start versteckt: Handle direkt holen
+            try:
+                handle = WINDOW.native.Handle.ToInt64()
+            except Exception:
+                handle = 0
+        if handle:   # nach dem Klick darf Clipper sich nach vorne holen
+            import ctypes
+            u32 = ctypes.windll.user32
+            u32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
+            u32.GetForegroundWindow.restype = ctypes.c_void_p
+            time.sleep(0.15)   # show() läuft im Fenster-Thread, kurz warten bis es sichtbar ist
+            ok = u32.SetForegroundWindow(handle)
+            if not ok or u32.GetForegroundWindow() != handle:
+                # Windows blockt das manchmal; ein kurzes Alt-Signal hebt die Sperre auf (bekannter Trick)
+                u32.keybd_event(0x12, 0, 0, 0)
+                u32.keybd_event(0x12, 0, 2, 0)
+                ok = u32.SetForegroundWindow(handle)
+            log.info("Fenster nach vorne: %s (Vordergrund ist Clipper: %s)", bool(ok), u32.GetForegroundWindow() == handle)
+        WINDOW.evaluate_js(f"libSig = null; poll().then(() => openEditor({json.dumps(name)}))")
+    except Exception:
+        log.exception("Konnte %s nicht im Fenster öffnen", name)
 
 
 def open_window():

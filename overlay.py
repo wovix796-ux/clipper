@@ -3,7 +3,8 @@
 Ein eigenes Win32-Fenster (ohne Tk), gezeichnet mit Pillow und per UpdateLayeredWindow
 angezeigt. Dadurch gibt es echte Transparenz (runde Ecken, weicher Schatten), und:
 - es holt sich nie den Fokus (WS_EX_NOACTIVATE, SW_SHOWNOACTIVATE), das Spiel bleibt vorne,
-- Klicks gehen durch (WS_EX_TRANSPARENT),
+- ein Klick darauf ruft on_click auf (z. B. Clipper mit dem Screenshot öffnen),
+- solange die Maus darüber ist, bleibt es stehen,
 - es ist für Bildschirmaufnahmen unsichtbar (WDA_EXCLUDEFROMCAPTURE), landet also nicht im nächsten Clip.
 Alles läuft in einem eigenen Thread; show() kann von überall aufgerufen werden.
 """
@@ -22,8 +23,9 @@ _thread = None
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32
 
-WS_POPUP = 0x80000000
-WS_EX_TOPMOST, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT = 0x8, 0x80, 0x20
+WS_POPUP, SS_NOTIFY = 0x80000000, 0x100   # SS_NOTIFY: Static-Fenster nimmt Mausklicks an
+WS_EX_TOPMOST, WS_EX_TOOLWINDOW = 0x8, 0x80
+WM_LBUTTONUP = 0x0202
 WS_EX_LAYERED, WS_EX_NOACTIVATE = 0x80000, 0x08000000
 SW_SHOWNOACTIVATE, ULW_ALPHA, WDA_EXCLUDEFROMCAPTURE = 4, 2, 0x11
 HOLD_SECONDS = 2.8
@@ -54,6 +56,7 @@ user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
 user32.DestroyWindow.argtypes = [wintypes.HWND]
 user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
 user32.SetWindowDisplayAffinity.argtypes = [wintypes.HWND, wintypes.DWORD]
+user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
 user32.PeekMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT, wintypes.UINT]
 user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
 user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
@@ -68,13 +71,13 @@ gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
 gdi32.DeleteDC.argtypes = [wintypes.HDC]
 
 
-def show(image_path, title, subtitle):
-    """Zeigt das Popup. Ein neues ersetzt ein noch sichtbares."""
+def show(image_path, title, subtitle, on_click=None, hint=""):
+    """Zeigt das Popup. Ein neues ersetzt ein noch sichtbares. on_click läuft in einem eigenen Thread."""
     global _thread
     if _thread is None:
         _thread = threading.Thread(target=_run, daemon=True)
         _thread.start()
-    _q.put((str(image_path), title, subtitle))
+    _q.put((str(image_path), title, subtitle, on_click, hint))
 
 
 def _font(size, bold=False):
@@ -86,7 +89,7 @@ def _font(size, bold=False):
     return ImageFont.load_default()
 
 
-def _card(path, title, subtitle, scale):
+def _card(path, title, subtitle, scale, hint=""):
     """Zeichnet das Popup als RGBA-Bild: Schatten, dunkle Karte, Vorschau, Text."""
     s = lambda v: max(1, round(v * scale))
     shadow, w, pad, r = s(18), s(340), s(10), s(14)
@@ -119,9 +122,14 @@ def _card(path, title, subtitle, scale):
            fill=(255, 255, 255, 255), width=s(2.2), joint="curve")
     tx = cx + s(18)
     d.text((tx, cy - s(1)), title, font=_font(s(14), True), fill=(245, 245, 247, 255), anchor="ls")
+    right = shadow + w - pad
+    if hint:
+        fh = _font(s(12), True)
+        d.text((right, cy), hint, font=fh, fill=(10, 132, 255, 255), anchor="rm")
+        right -= d.textlength(hint, font=fh) + s(10)
     sub = subtitle
     f2 = _font(s(11.5))
-    while d.textlength(sub, font=f2) > w - (tx - shadow) - pad and len(sub) > 4:
+    while d.textlength(sub, font=f2) > right - tx and len(sub) > 4:
         sub = sub[:-2]
         if not sub.endswith("…"):
             sub = sub.rstrip() + "…"
@@ -145,8 +153,9 @@ class _Popup:
     def __init__(self, img):
         self.w, self.h = img.size
         self.hwnd = user32.CreateWindowExW(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_NOACTIVATE,
-            "STATIC", "Clipper", WS_POPUP, 0, 0, self.w, self.h, None, None, None, None)
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
+            "STATIC", "Clipper", WS_POPUP | SS_NOTIFY, 0, 0, self.w, self.h, None, None, None, None)
+        self.x = self.y = 0
         user32.SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE)   # nicht im Clip
         self.screen = user32.GetDC(None)
         self.mem = gdi32.CreateCompatibleDC(self.screen)
@@ -159,6 +168,7 @@ class _Popup:
         self.shown = False
 
     def update(self, x, y, alpha):
+        self.x, self.y = int(x), int(y)
         blend = BLENDFUNCTION(0, 0, max(0, min(255, int(alpha))), 1)
         user32.UpdateLayeredWindow(self.hwnd, self.screen, ctypes.byref(wintypes.POINT(int(x), int(y))),
                                    ctypes.byref(wintypes.SIZE(self.w, self.h)), self.mem,
@@ -175,11 +185,22 @@ class _Popup:
         user32.DestroyWindow(self.hwnd)
 
 
-def _pump():
-    msg = wintypes.MSG()
+def _pump(hwnd=None):
+    """Verarbeitet Fenster-Nachrichten. True, wenn das Popup angeklickt wurde."""
+    msg, clicked = wintypes.MSG(), False
     while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):   # PM_REMOVE
+        if hwnd and msg.hWnd == hwnd and msg.message == WM_LBUTTONUP:
+            clicked = True
         user32.TranslateMessage(ctypes.byref(msg))
         user32.DispatchMessageW(ctypes.byref(msg))
+    return clicked
+
+
+def _hovered(popup, shadow):
+    pt = wintypes.POINT()
+    user32.GetCursorPos(ctypes.byref(pt))
+    return (popup.x + shadow <= pt.x < popup.x + popup.w - shadow
+            and popup.y + shadow <= pt.y < popup.y + popup.h - shadow)
 
 
 def _ease_out(t):   # wie cubic-bezier(0.23, 1, 0.32, 1): schnell rein, weich aus
@@ -198,31 +219,39 @@ def _run():
             logging.getLogger("clipper").exception("Vorschau-Popup fehlgeschlagen")
 
 
-def _animate(path, title, subtitle):
+def _animate(path, title, subtitle, on_click=None, hint=""):
     scale = user32.GetDpiForSystem() / 96 if hasattr(user32, "GetDpiForSystem") else 1.0
-    img, shadow = _card(path, title, subtitle, scale)
+    img, shadow = _card(path, title, subtitle, scale, hint if on_click else "")
     popup = _Popup(img)
     sw = user32.GetSystemMetrics(0)
     margin = round(16 * scale)
     x_end = sw - popup.w - margin + shadow
     y = margin - shadow
     slide = round(28 * scale)
+
+    def run_phase(duration, frame, until=None):
+        """Spielt eine Phase ab. Gibt "click", "new" oder None (normal zu Ende) zurück."""
+        start = time.perf_counter()
+        while True:
+            t = min(1.0, (time.perf_counter() - start) / duration)
+            x, alpha = frame(t)
+            popup.update(x, y, alpha)
+            if _pump(popup.hwnd) and on_click:
+                return "click"
+            if not _q.empty():
+                return "new"
+            if t >= 1.0 and (until is None or until()):
+                return None
+            time.sleep(1 / 120)
+
     try:
-        phases = [(0.26, lambda t: (x_end + slide * (1 - _ease_out(t)), 255 * _ease_out(t))),   # rein
-                  (HOLD_SECONDS, lambda t: (x_end, 255)),                                       # stehen
-                  (0.2, lambda t: (x_end + slide * 0.4 * t * t, 255 * (1 - t)))]                # raus, schneller
-        for duration, frame in phases:
-            start = time.perf_counter()
-            while True:
-                t = min(1.0, (time.perf_counter() - start) / duration)
-                x, alpha = frame(t)
-                popup.update(x, y, alpha)
-                _pump()
-                if t >= 1.0 or not _q.empty():
-                    break
-                time.sleep(1 / 120)
-            if not _q.empty():   # neuer Screenshot: sofort ersetzen
-                break
+        result = (run_phase(0.26, lambda t: (x_end + slide * (1 - _ease_out(t)), 255 * _ease_out(t)))   # rein
+                  or run_phase(HOLD_SECONDS, lambda t: (x_end, 255),
+                               until=lambda: not _hovered(popup, shadow)))                            # stehen, solange Maus drauf
+        if result == "click":
+            threading.Thread(target=on_click, daemon=True).start()
+        if result != "new":   # raus, schneller als rein
+            run_phase(0.2 if result is None else 0.12, lambda t: (x_end + slide * 0.4 * t * t, 255 * (1 - t)))
     finally:
         popup.close()
         _pump()
@@ -230,5 +259,6 @@ def _animate(path, title, subtitle):
 
 if __name__ == "__main__":   # Test: python overlay.py bild.png
     import sys
-    show(sys.argv[1], "Screenshot saved", "Screenshot 2026-10-22 12-00-00.png")
-    time.sleep(4)
+    show(sys.argv[1], "Screenshot saved", "Screenshot 2026-10-22 12-00-00.png",
+         on_click=lambda: print("angeklickt"), hint="Open ›")
+    time.sleep(6)
